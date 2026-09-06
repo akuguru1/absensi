@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buku Kelas — Absensi &amp; Nilai IPA</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%22100%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%232A1147%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%239D00FF%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23FF2E88%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%20%20%3C/defs%3E%0A%20%20%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2294%22%20height%3D%2294%22%20rx%3D%2224%22%20fill%3D%22url%28%23g%29%22/%3E%0A%20%20%3Cg%20transform%3D%22translate%2850%2C45%29%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20opacity%3D%220.5%22%3E%0A%20%20%20%20%3Cellipse%20rx%3D%2229%22%20ry%3D%2211.5%22/%3E%0A%20%20%20%20%3Cellipse%20rx%3D%2229%22%20ry%3D%2211.5%22%20transform%3D%22rotate%2860%29%22/%3E%0A%20%20%20%20%3Cellipse%20rx%3D%2229%22%20ry%3D%2211.5%22%20transform%3D%22rotate%28120%29%22/%3E%0A%20%20%3C/g%3E%0A%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2245%22%20r%3D%2220.5%22%20fill%3D%22%23ffffff%22/%3E%0A%20%20%3Cpath%20d%3D%22M39.5%2045.5%20L46.5%2052.5%20L61.5%2036.5%22%20fill%3D%22none%22%20stroke%3D%22%23B8860B%22%20stroke-width%3D%226.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%0A%20%20%3Ctext%20x%3D%2250%22%20y%3D%2284.5%22%20text-anchor%3D%22middle%22%20font-family%3D%22Arial%2C%20Helvetica%2C%20sans-serif%22%20font-size%3D%2216.5%22%20font-weight%3D%22800%22%20fill%3D%22%23F6D871%22%20letter-spacing%3D%221.5%22%3EIPA%3C/text%3E%0A%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%22100%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%232A1147%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%239D00FF%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23FF2E88%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%20%20%3C/defs%3E%0A%20%20%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2294%22%20height%3D%2294%22%20rx%3D%2224%22%20fill%3D%22url%28%23g%29%22/%3E%0A%20%20%3Cg%20transform%3D%22translate%2850%2C45%29%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20opacity%3D%220.5%22%3E%0A%20%20%20%20%3Cellipse%20rx%3D%2229%22%20ry%3D%2211.5%22/%3E%0A%20%20%20%20%3Cellipse%20rx%3D%2229%22%20ry%3D%2211.5%22%20transform%3D%22rotate%2860%29%22/%3E%0A%20%20%20%20%3Cellipse%20rx%3D%2229%22%20ry%3D%2211.5%22%20transform%3D%22rotate%28120%29%22/%3E%0A%20%20%3C/g%3E%0A%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2245%22%20r%3D%2220.5%22%20fill%3D%22%23ffffff%22/%3E%0A%20%20%3Cpath%20d%3D%22M39.5%2045.5%20L46.5%2052.5%20L61.5%2036.5%22%20fill%3D%22none%22%20stroke%3D%22%23B8860B%22%20stroke-width%3D%226.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%0A%20%20%3Ctext%20x%3D%2250%22%20y%3D%2284.5%22%20text-anchor%3D%22middle%22%20font-family%3D%22Arial%2C%20Helvetica%2C%20sans-serif%22%20font-size%3D%2216.5%22%20font-weight%3D%22800%22%20fill%3D%22%23F6D871%22%20letter-spacing%3D%221.5%22%3EIPA%3C/text%3E%0A%3C/svg%3E">
+<meta name="theme-color" content="#9D00FF">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Absensi IPA">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script>
+  // Terapkan tema tersimpan sedini mungkin supaya tidak sempat "berkedip" ke tema bawaan.
+  (function(){
+    try{
+      var t = localStorage.getItem('bukukelas_theme_v1');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    }catch(e){}
+  })();
+</script>
+</head>
+<body>
+
+  <!-- TOPBAR MOBILE (hanya tampil di layar kecil) -->
+  <header class="mobile-topbar">
+    <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Buka menu">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="mobile-topbar-brand">
+      <span class="side-brand-mark">✤</span>
+      <strong>Buku Kelas</strong>
+    </div>
+  </header>
+  <div class="mobile-nav-backdrop" id="mobileNavBackdrop"></div>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="side" id="sideNav">
+    <button class="mobile-nav-close" id="mobileNavClose" aria-label="Tutup menu">×</button>
+    <div class="side-brand">
+      <span class="side-brand-mark">✤</span>
+      <div class="side-brand-text">
+        <strong>Buku Kelas</strong>
+        <small>Absensi &amp; Nilai IPA</small>
+      </div>
+    </div>
+
+    <nav class="side-nav">
+      <button class="nav-item is-active" data-view="dashboard">
+        <span class="nav-ico">◧</span>Ringkasan
+      </button>
+      <button class="nav-item" data-view="kelas">
+        <span class="nav-ico">▤</span>Kelas &amp; Siswa
+      </button>
+      <button class="nav-item" data-view="absensi">
+        <span class="nav-ico">✓</span>Absensi
+      </button>
+      <button class="nav-item" data-view="keaktifan">
+        <span class="nav-ico">↑</span>Keaktifan
+      </button>
+      <button class="nav-item" data-view="nilai">
+        <span class="nav-ico">#</span>Nilai
+      </button>
+      <button class="nav-item" data-view="praktikum">
+        <span class="nav-ico">⚗</span>Jurnal Praktikum
+      </button>
+      <button class="nav-item" data-view="jurnalmengajar">
+        <span class="nav-ico">✎</span>Jurnal Mengajar
+      </button>
+      <button class="nav-item" data-view="jadwal">
+        <span class="nav-ico">◷</span>Jadwal Pelajaran
+      </button>
+      <button class="nav-item" data-view="modulajar">
+        <span class="nav-ico">▥</span>Modul Ajar
+      </button>
+      <button class="nav-item" data-view="rekap">
+        <span class="nav-ico">▦</span>Rekap &amp; Laporan
+      </button>
+      <button class="nav-item" data-view="pengaturan">
+        <span class="nav-ico">⚙</span>Pengaturan
+      </button>
+    </nav>
+
+    <div class="side-guru">
+      <span class="side-guru-photo-wrap">
+        <img id="sideGuruFoto" class="side-guru-photo" style="display:none" alt="Foto guru">
+        <span id="sideGuruInitial" class="side-guru-initial">?</span>
+      </span>
+      <span id="sideGuruNama" class="side-guru-nama">Guru IPA</span>
+    </div>
+
+    <div class="side-sync">
+      <div class="sync-dot" id="syncDot"></div>
+      <div class="sync-text">
+        <span id="syncLabel">Belum tersambung ke Google/Gmail</span>
+        <small id="syncTime">—</small>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <header class="topbar">
+      <div class="topbar-ctx">
+        <label class="ctx-field">
+          <span>Kelas aktif</span>
+          <select id="globalKelasSelect"><option value="">— pilih kelas —</option></select>
+        </label>
+        <label class="ctx-field">
+          <span>Tanggal</span>
+          <input type="date" id="globalDate">
+        </label>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-line" id="pullNowBtn">⬇ Ambil data terbaru</button>
+        <button class="btn btn-primary" id="syncNowBtn">⬆ Kirim ke Spreadsheet</button>
+      </div>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section class="view is-active" id="view-dashboard">
+      <h1>Ringkasan hari ini</h1>
+      <p class="lede">Kondisi kelas Anda pada <span id="dashDateLabel">—</span>.</p>
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <span class="stat-num" id="statHadir">0</span>
+          <span class="stat-label">Hadir</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="statSakit">0</span>
+          <span class="stat-label">Sakit</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="statIzin">0</span>
+          <span class="stat-label">Izin</span>
+        </div>
+        <div class="stat-card is-alert">
+          <span class="stat-num" id="statAlpha">0</span>
+          <span class="stat-label">Alpha</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="statBelumAbsen">0</span>
+          <span class="stat-label">Kelas belum diabsen</span>
+        </div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="panel">
+          <div class="panel-head"><h2>Perlu perhatian</h2><small>Kehadiran &lt; 80% atau nilai di bawah KKM</small></div>
+          <div id="attentionList" class="attention-list"><p class="empty">Belum ada data.</p></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Papan keaktifan</h2><small>Total poin minggu ini, semua kelas</small></div>
+          <div id="topActiveList" class="attention-list"><p class="empty">Belum ada data.</p></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Jadwal mengajar hari ini</h2><small>Pengingat otomatis akan muncul ±10 menit sebelum jam mulai (selama aplikasi terbuka)</small></div>
+        <div id="dashJadwalList" class="attention-list"><p class="empty">Belum ada jadwal.</p></div>
+      </div>
+    </section>
+
+    <!-- KELAS & SISWA -->
+    <section class="view" id="view-kelas">
+      <h1>Kelas &amp; Siswa</h1>
+      <p class="lede">Kelola daftar kelas dan siswa. Import cepat dari file Excel/CSV.</p>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Tahun ajaran</h2>
+          <button class="btn btn-line" id="newYearBtn">+ Tahun ajaran baru</button>
+        </div>
+        <p class="hint">Setiap kelas tercatat di satu tahun ajaran. Saat Anda membuka <strong>tahun ajaran baru</strong>, kelas-kelas dari tahun sebelumnya <strong>tidak dihapus</strong> — tetap tersimpan sebagai arsip dan bisa dilihat lewat filter di bawah, sementara pilihan "Kelas aktif" di bagian atas halaman hanya menampilkan kelas tahun ajaran yang sedang berjalan.</p>
+        <div class="form-row" style="margin-bottom:0">
+          <label class="ctx-field"><span>Tahun ajaran berjalan</span><strong id="activeYearLabel" style="font-size:14px; color:var(--purple-dark)">—</strong></label>
+          <label class="ctx-field"><span>Tampilkan kelas dari tahun ajaran</span>
+            <select id="kelasYearFilter"></select>
+          </label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Kelas</h2>
+          <button class="btn btn-line" id="addKelasBtn">+ Tambah kelas</button>
+        </div>
+        <div class="tbl-wrap"><table class="tbl" id="kelasTable">
+          <thead><tr><th>Nama kelas</th><th>Mapel</th><th>Tahun ajaran</th><th>Status</th><th>Jumlah siswa</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Siswa</h2>
+          <div class="panel-head-actions">
+            <select id="siswaKelasFilter"><option value="">Semua kelas (tahun ajaran terpilih)</option></select>
+            <input type="text" id="siswaSearch" placeholder="Cari nama / NIS…">
+            <button class="btn btn-line" id="downloadTemplateBtn">Unduh template import</button>
+            <label class="btn btn-line file-btn">Import file
+              <input type="file" id="importFile" accept=".xlsx,.xls,.csv" hidden>
+            </label>
+            <button class="btn btn-primary" id="addSiswaBtn">+ Tambah siswa</button>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table class="tbl" id="siswaTable">
+          <thead><tr><th>Nama</th><th>NIS/NISN</th><th>JK</th><th>Kelas</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ABSENSI -->
+    <section class="view" id="view-absensi">
+      <h1>Absensi harian</h1>
+      <p class="lede">Pilih kelas dan tanggal di bagian atas, lalu tandai kehadiran tiap siswa.</p>
+
+      <div class="toolrow">
+        <button class="btn btn-line" id="markAllHadirBtn">Tandai semua Hadir</button>
+        <span class="lock-note" id="absensiLockNote"></span>
+        <button class="btn btn-primary" id="saveAbsensiBtn">Simpan absensi</button>
+      </div>
+
+      <div class="tbl-wrap"><table class="tbl" id="absensiTable">
+        <thead><tr><th>Siswa</th><th>Status</th><th>Catatan</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+
+    <!-- KEAKTIFAN -->
+    <section class="view" id="view-keaktifan">
+      <h1>Poin keaktifan</h1>
+      <p class="lede">Catat kontribusi siswa hari ini: menjawab, bertanya, atau kategori lain.</p>
+
+      <div class="toolrow">
+        <label class="ctx-field">
+          <span>Tambah kategori</span>
+          <input type="text" id="newCategoryInput" placeholder="Misal: Presentasi">
+        </label>
+        <button class="btn btn-line" id="addCategoryBtn">+ Kategori</button>
+        <button class="btn btn-primary" id="saveKeaktifanBtn">Simpan poin hari ini</button>
+      </div>
+
+      <div class="tbl-wrap"><table class="tbl" id="keaktifanTable">
+        <thead><tr id="keaktifanHeadRow"><th>Siswa</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+
+    <!-- NILAI -->
+    <section class="view" id="view-nilai">
+      <h1>Nilai tugas &amp; ulangan</h1>
+      <p class="lede">Input manual atau import nilai dari Excel/CSV. Nilai akhir dihitung otomatis sesuai bobot di Pengaturan.</p>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Kelola &amp; input nilai</h2>
+          <small>Buat sebanyak mungkin Tugas, Ulangan, dsb — semua akan dirata-rata otomatis per jenis</small>
+        </div>
+        <div class="form-row">
+          <label class="ctx-field"><span>Jenis</span>
+            <select id="nilaiJenis"></select>
+          </label>
+          <label class="ctx-field" style="flex:1.4"><span>Nama penilaian</span>
+            <input type="text" id="nilaiNama" placeholder="Misal: Tugas 1">
+          </label>
+          <label class="btn btn-line file-btn">Import dari file
+            <input type="file" id="importNilaiFile" accept=".xlsx,.xls,.csv" hidden>
+          </label>
+          <button class="btn btn-line" id="saveNilaiBtn">Simpan sekarang</button>
+        </div>
+        <p class="hint" style="margin-top:-4px">Nilai yang Anda ketik <strong>otomatis tersimpan</strong> begitu berpindah kolom/kotak — tombol "Simpan sekarang" hanya untuk memaksa simpan semuanya segera. <span id="nilaiAutoSaveNote"></span></p>
+        <div class="chip-row" id="nilaiChipRow"></div>
+        <div class="tbl-wrap"><table class="tbl" id="nilaiInputTable">
+          <thead><tr><th>Siswa — <span id="nilaiItemLabel"></span></th><th>Nilai (0–100)</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Rekap nilai akhir</h2>
+          <small>Kelas aktif — rata-rata tiap jenis, dihitung sesuai bobot di Pengaturan</small>
+        </div>
+        <div class="tbl-wrap"><table class="tbl" id="nilaiRekapTable">
+          <thead><tr><th>Siswa</th><th>Tugas</th><th>UH</th><th>UTS</th><th>UAS</th><th>Praktikum</th><th>Nilai akhir</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="chart-wrap"><canvas id="chartNilai"></canvas></div>
+      </div>
+    </section>
+
+    <!-- JURNAL PRAKTIKUM -->
+    <section class="view" id="view-praktikum">
+      <h1>Jurnal praktikum</h1>
+      <p class="lede">Catatan kegiatan praktikum: alat, bahan, dan keselamatan (K3).</p>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Tambah catatan praktikum</h2>
+        </div>
+        <div class="form-grid">
+          <label class="ctx-field"><span>Judul percobaan</span><input type="text" id="prakJudul" placeholder="Misal: Uji Kandungan Vitamin C"></label>
+          <label class="ctx-field"><span>Alat &amp; bahan</span><input type="text" id="prakAlat" placeholder="Misal: Tabung reaksi, iodin, larutan sampel"></label>
+          <label class="ctx-field"><span>Catatan keselamatan (K3)</span><input type="text" id="prakK3" placeholder="Misal: Gunakan sarung tangan saat memegang iodin"></label>
+        </div>
+        <button class="btn btn-primary" id="savePraktikumBtn">Simpan catatan</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Riwayat praktikum — kelas aktif</h2></div>
+        <div class="tbl-wrap"><table class="tbl" id="praktikumTable">
+          <thead><tr><th>Tanggal</th><th>Judul</th><th>Alat &amp; bahan</th><th>K3</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- JURNAL MENGAJAR -->
+    <section class="view" id="view-jurnalmengajar">
+      <h1>Jurnal mengajar</h1>
+      <p class="lede">Catatan harian kegiatan mengajar: jam pelajaran, materi, dan hal-hal khusus yang perlu diingat.</p>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Tambah catatan mengajar</h2>
+          <small id="jmTanggalLabel"></small>
+        </div>
+        <div class="form-grid">
+          <label class="ctx-field"><span>Jam pelajaran ke</span><input type="text" id="jmJamKe" placeholder="Misal: 3–4"></label>
+          <label class="ctx-field"><span>Materi yang diajarkan</span><input type="text" id="jmMateri" placeholder="Misal: Sistem pencernaan manusia"></label>
+          <label class="ctx-field"><span>Catatan khusus</span><input type="text" id="jmCatatan" placeholder="Misal: 3 siswa belum bawa buku paket"></label>
+        </div>
+        <div class="form-row">
+          <label class="btn btn-line file-btn">📷 Foto bukti mengajar (opsional)
+            <input type="file" id="jmFoto" accept="image/*" capture="environment" hidden>
+          </label>
+          <span class="hint" id="jmFotoNama" style="margin:0"></span>
+        </div>
+        <p class="hint" style="margin-top:-2px">Foto langsung diunggah ke folder Google Drive akun Anda dan tautannya otomatis tercatat di Spreadsheet begitu catatan disimpan.</p>
+        <button class="btn btn-primary" id="saveJurnalMengajarBtn">Simpan catatan</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Riwayat mengajar — kelas aktif</h2></div>
+        <div class="tbl-wrap"><table class="tbl" id="jurnalMengajarTable">
+          <thead><tr><th>Tanggal</th><th>Jam ke</th><th>Materi</th><th>Catatan khusus</th><th>Bukti foto</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- JADWAL PELAJARAN -->
+    <section class="view" id="view-jadwal">
+      <h1>Jadwal pelajaran</h1>
+      <p class="lede">Atur hari &amp; jam mengajar tiap kelas. Aplikasi akan mengingatkan Anda otomatis menjelang jam mulai selama aplikasi ini terbuka, dan menampilkan jadwal hari ini di Ringkasan.</p>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Tambah jadwal</h2></div>
+        <div class="form-grid">
+          <label class="ctx-field"><span>Kelas</span><select id="jadwalKelas"></select></label>
+          <label class="ctx-field"><span>Hari</span><select id="jadwalHari"></select></label>
+          <label class="ctx-field"><span>Jam ke</span><input type="text" id="jadwalJamKe" placeholder="Misal: 3–4"></label>
+          <label class="ctx-field"><span>Jam mulai</span><input type="time" id="jadwalJamMulai"></label>
+          <label class="ctx-field"><span>Jam selesai</span><input type="time" id="jadwalJamSelesai"></label>
+        </div>
+        <button class="btn btn-primary" id="addJadwalBtn">+ Tambah jadwal</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Daftar jadwal</h2></div>
+        <div class="tbl-wrap"><table class="tbl" id="jadwalTable">
+          <thead><tr><th>Hari</th><th>Kelas</th><th>Jam ke</th><th>Waktu</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- MODUL AJAR -->
+    <section class="view" id="view-modulajar">
+      <h1>Modul ajar</h1>
+      <p class="lede">Unggah modul ajar (Word/PDF) yang sudah Anda punya. Jika sudah terhubung ke Google Spreadsheet, modul tersimpan ke Drive dan bisa dibuka lewat HP maupun laptop.</p>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Unggah file modul ajar</h2><small>Format .doc, .docx, atau .pdf</small></div>
+        <div class="form-grid">
+          <label class="ctx-field"><span>Kelas</span><select id="modulUploadKelas"></select></label>
+          <label class="ctx-field" style="flex:1.4"><span>Judul modul</span><input type="text" id="modulUploadJudul" placeholder="Misal: Modul Sistem Pencernaan"></label>
+          <label class="btn btn-line file-btn">Pilih file
+            <input type="file" id="modulUploadFile" accept=".doc,.docx,.pdf" hidden>
+          </label>
+        </div>
+        <button class="btn btn-primary" id="uploadModulBtn">Unggah modul</button>
+        <p class="hint">Jika sudah terhubung ke Google Spreadsheet (lihat Pengaturan), file otomatis disimpan ke Google Drive akun Anda dan bisa dibuka dari perangkat mana pun — HP maupun laptop. Jika belum terhubung, file hanya tersimpan di perangkat ini.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Daftar modul ajar</h2></div>
+        <div class="tbl-wrap"><table class="tbl" id="modulAjarTable">
+          <thead><tr><th>Judul</th><th>Kelas</th><th>Sumber</th><th>Tanggal</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- REKAP & LAPORAN -->
+    <section class="view" id="view-rekap">
+      <h1>Rekap &amp; laporan</h1>
+      <p class="lede">Filter rentang tanggal, lihat grafik, lalu unduh laporan.</p>
+
+      <div class="toolrow">
+        <label class="ctx-field"><span>Dari</span><input type="date" id="rekapFrom"></label>
+        <label class="ctx-field"><span>Sampai</span><input type="date" id="rekapTo"></label>
+        <button class="btn btn-line" id="rekapRunBtn">Tampilkan rekap</button>
+        <div class="spacer"></div>
+        <button class="btn btn-line" id="exportExcelBtn">⬇ Excel</button>
+        <button class="btn btn-line" id="exportWordBtn">⬇ Word</button>
+        <button class="btn btn-line" id="exportPdfBtn">⬇ PDF</button>
+      </div>
+
+      <div class="panel-grid">
+        <div class="panel">
+          <div class="panel-head"><h2>Persentase kehadiran</h2></div>
+          <div class="chart-wrap"><canvas id="chartAbsensi"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Kehadiran vs. nilai akhir</h2><small>Korelasi sederhana</small></div>
+          <div class="chart-wrap"><canvas id="chartKorelasi"></canvas></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Tabel rekap</h2><small>Ini yang akan diekspor</small></div>
+        <div class="tbl-wrap"><table class="tbl" id="rekapTable">
+          <thead><tr><th>Siswa</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th><th>% Kehadiran</th><th>Poin keaktifan</th><th>Nilai akhir</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- PENGATURAN -->
+    <section class="view" id="view-pengaturan">
+      <h1>Pengaturan</h1>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Tampilan &amp; tema warna</h2><small>Pilih sesuai selera — tersimpan otomatis di perangkat ini</small></div>
+        <p class="hint" style="margin:0 0 12px">Ganti nuansa warna aplikasi kapan saja. Pilihan ini hanya memengaruhi tampilan di perangkat ini dan <strong>tidak</strong> ikut disinkronkan ke Google Spreadsheet. Tersedia 130+ kombinasi palet warna, dikelompokkan per nuansa — klik judul kelompok untuk membuka/menutup daftarnya.</p>
+        <input type="search" id="themeSearchInput" class="theme-search-input" placeholder="🔍 Cari nama palet warna, mis. 'biru', 'pastel', 'emas'…">
+        <div id="themePickerRoot"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Buat palet warna sendiri</h2><small>Atur kombinasi warna sesuai selera Anda</small></div>
+        <p class="hint" style="margin:0 0 12px">Pilih 4 warna dasar aplikasi di bawah ini — warna lain (versi gelap, versi pucat, warna teks, dsb.) akan disesuaikan otomatis supaya tetap serasi &amp; mudah dibaca. Hasilnya langsung terlihat di seluruh aplikasi, dan bisa disimpan dengan nama sendiri.</p>
+        <div id="customThemeBuilderRoot"></div>
+        <div class="panel-head" style="margin-top:20px"><h2 style="font-size:15px">Palet tersimpan saya</h2></div>
+        <div id="customThemeListRoot"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Profil guru</h2></div>
+        <div class="form-row" style="align-items:center">
+          <span class="guru-photo-edit-wrap">
+            <img id="guruFotoPreview" class="guru-photo-edit" style="display:none" alt="Foto profil">
+            <span id="guruFotoInitial" class="guru-photo-initial">?</span>
+          </span>
+          <label class="ctx-field" style="flex:1.4"><span>Nama guru</span><input type="text" id="guruNamaInput" placeholder="Nama lengkap Anda"></label>
+          <label class="btn btn-line file-btn">Ganti foto
+            <input type="file" id="guruFotoInput" accept="image/*" hidden>
+          </label>
+          <button class="btn btn-line" id="guruFotoHapusBtn">Hapus foto</button>
+        </div>
+        <p class="hint">Foto profil disimpan di peramban perangkat ini saja (tidak ikut disinkronkan ke Spreadsheet).</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Jenis penilaian tambahan</h2></div>
+        <label class="ctx-check"><input type="checkbox" id="enableUlisanToggle"> Aktifkan <strong>Ulangan Lisan</strong> (opsional) sebagai jenis penilaian tersendiri</label>
+        <p class="hint">Jika diaktifkan, "Ulangan Lisan" akan muncul di menu Nilai dan punya bobotnya sendiri di nilai akhir.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Bobot nilai akhir</h2><small>Total harus 100%</small></div>
+        <div class="form-row">
+          <label class="ctx-field"><span>Tugas (%)</span><input type="number" id="bobotTugas" min="0" max="100"></label>
+          <label class="ctx-field"><span>Ulangan Harian (%)</span><input type="number" id="bobotUh" min="0" max="100"></label>
+          <label class="ctx-field" id="bobotUlisanWrap"><span>Ulangan Lisan (%)</span><input type="number" id="bobotUlisan" min="0" max="100"></label>
+          <label class="ctx-field"><span>UTS (%)</span><input type="number" id="bobotUts" min="0" max="100"></label>
+          <label class="ctx-field"><span>UAS (%)</span><input type="number" id="bobotUas" min="0" max="100"></label>
+          <label class="ctx-field"><span>Praktikum (%)</span><input type="number" id="bobotPraktikum" min="0" max="100"></label>
+          <button class="btn btn-primary" id="saveBobotBtn">Simpan bobot</button>
+        </div>
+        <p class="hint" id="bobotHint"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Hubungkan ke akun Google (Gmail) — sinkron dua arah, otomatis</h2></div>
+        <p class="hint">Google Spreadsheet di akun Gmail/Google Drive Anda berfungsi sebagai <strong>data bersama</strong> antar perangkat. Setelah tersambung, semuanya berjalan <strong>otomatis, tanpa perlu klik apa pun</strong>: setiap kali Anda mengisi nilai, absensi, atau data lain, perubahannya otomatis tersimpan di perangkat ini dan otomatis terkirim ke Spreadsheet beberapa saat kemudian. Setiap kali aplikasi dibuka, data terbaru dari Spreadsheet juga otomatis diambil.</p>
+        <p class="hint"><strong>Kalau sedang offline:</strong> Anda tetap bisa mengisi nilai/absensi seperti biasa — datanya aman tersimpan di perangkat ini. Begitu koneksi internet tersambung lagi, aplikasi otomatis mengirim seluruh perubahan yang tertunda ke Spreadsheet, tanpa perlu diulang manual. Tombol "Ambil data terbaru" dan "Kirim ke Spreadsheet" di atas tetap ada kalau sewaktu-waktu Anda ingin memaksa sinkron sekarang juga.</p>
+        <div class="form-row">
+          <label class="ctx-field" style="flex:2"><span>URL Web App (dari akun Gmail Anda)</span><input type="text" id="sheetsUrl" placeholder="https://script.google.com/macros/s/…/exec"></label>
+          <button class="btn btn-primary" id="saveSheetsBtn">Simpan &amp; tes koneksi</button>
+        </div>
+        <p class="hint" id="sheetsTestResult"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Data lokal</h2></div>
+        <p class="hint">Semua data tersimpan di peramban perangkat ini (localStorage). Unduh cadangan JSON secara berkala, terutama sebelum berganti perangkat.</p>
+        <div class="form-row">
+          <button class="btn btn-line" id="downloadBackupBtn">Unduh cadangan JSON</button>
+          <label class="btn btn-line file-btn">Pulihkan dari cadangan
+            <input type="file" id="restoreFile" accept=".json" hidden>
+          </label>
+          <button class="btn" id="resetDataBtn" style="color:#B23A48;border-color:#B23A48;background:#fff">Hapus semua data</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modalBox"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
