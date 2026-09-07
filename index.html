@@ -73,6 +73,9 @@
       <button class="nav-item" data-view="jurnalmengajar">
         <span class="nav-ico">✎</span>Jurnal Mengajar
       </button>
+      <button class="nav-item" data-view="refleksi">
+        <span class="nav-ico">💭</span>Refleksi Mengajar
+      </button>
       <button class="nav-item" data-view="jadwal">
         <span class="nav-ico">◷</span>Jadwal Pelajaran
       </button>
@@ -297,6 +300,22 @@
         </table></div>
         <div class="chart-wrap"><canvas id="chartNilai"></canvas></div>
       </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Tabel lengkap nilai (semua tugas &amp; ulangan)</h2>
+            <small>Setiap kolom = satu penilaian yang pernah diinput, termasuk nilai akhir hasil rumus persentase bobot di Pengaturan</small>
+          </div>
+          <div class="panel-head-actions">
+            <button class="btn btn-primary" id="downloadNilaiKelasBtn">⬇ Unduh nilai kelas ini (Excel)</button>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table class="tbl" id="nilaiLengkapTable">
+          <thead><tr><th>Siswa</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
     </section>
 
     <!-- JURNAL PRAKTIKUM -->
@@ -341,12 +360,19 @@
           <label class="ctx-field"><span>Catatan khusus</span><input type="text" id="jmCatatan" placeholder="Misal: 3 siswa belum bawa buku paket"></label>
         </div>
         <div class="form-row">
-          <label class="btn btn-line file-btn">📷 Foto bukti mengajar (opsional)
-            <input type="file" id="jmFoto" accept="image/*" capture="environment" hidden>
+          <label class="btn btn-line file-btn">📷 Ambil foto (kamera)
+            <input type="file" id="jmFotoKamera" accept="image/*" capture="environment" hidden>
           </label>
+          <label class="btn btn-line file-btn">🖼️ Pilih dari galeri
+            <input type="file" id="jmFotoGaleri" accept="image/*" hidden>
+          </label>
+          <button type="button" class="btn btn-line" id="jmFotoHapusBtn" style="display:none; color:#E1547A">Hapus foto</button>
           <span class="hint" id="jmFotoNama" style="margin:0"></span>
         </div>
-        <p class="hint" style="margin-top:-2px">Foto langsung diunggah ke folder Google Drive akun Anda dan tautannya otomatis tercatat di Spreadsheet begitu catatan disimpan.</p>
+        <div id="jmFotoPreviewWrap" style="display:none; margin:2px 0 -2px">
+          <img id="jmFotoPreview" alt="Pratinjau foto bukti mengajar" style="max-width:160px; max-height:160px; border-radius:10px; border:1px solid var(--line); display:block; object-fit:cover">
+        </div>
+        <p class="hint" style="margin-top:-2px">Foto bisa diambil langsung dari kamera atau dipilih dari galeri HP/laptop Anda. Foto langsung diunggah ke folder Google Drive akun Anda dan tautannya otomatis tercatat di Spreadsheet begitu catatan disimpan.</p>
         <button class="btn btn-primary" id="saveJurnalMengajarBtn">Simpan catatan</button>
       </div>
 
@@ -354,6 +380,32 @@
         <div class="panel-head"><h2>Riwayat mengajar — kelas aktif</h2></div>
         <div class="tbl-wrap"><table class="tbl" id="jurnalMengajarTable">
           <thead><tr><th>Tanggal</th><th>Jam ke</th><th>Materi</th><th>Catatan khusus</th><th>Bukti foto</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- REFLEKSI MENGAJAR -->
+    <section class="view" id="view-refleksi">
+      <h1>Refleksi mengajar</h1>
+      <p class="lede">Setelah mengajar, tuliskan refleksi Anda untuk kelas ini: apa yang berjalan baik, kendala yang ditemui, dan rencana perbaikan pada pertemuan berikutnya.</p>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Tulis refleksi</h2>
+          <small id="refTanggalLabel"></small>
+        </div>
+        <label class="ctx-field" style="width:100%">
+          <span>Refleksi kelas ini</span>
+          <textarea id="refKonten" rows="5" placeholder="Misal: Siswa antusias saat diskusi kelompok, namun sesi presentasi molor 10 menit. Minggu depan pakai timer per kelompok."></textarea>
+        </label>
+        <button class="btn btn-primary" id="saveRefleksiBtn">Simpan refleksi</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Riwayat refleksi — kelas aktif</h2><small>Tersimpan di perangkat ini &amp; otomatis terkirim ke Spreadsheet</small></div>
+        <div class="tbl-wrap"><table class="tbl" id="refleksiTable">
+          <thead><tr><th style="width:120px">Tanggal</th><th>Refleksi</th><th></th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
