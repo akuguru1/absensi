@@ -105,6 +105,7 @@ const THEMES = [
    fungsi yang sama dipakai untuk fitur "Buat Palet Sendiri".
    ========================================================================= */
 const GENERATED_PALETTES = [
+  { id:'gen-pink-neon', group:'Palet warna', name:'Pink Neon', desc:'Pink neon menyala, cerah dan berani', swatch:['#E6007A','#FF3FA4','#FF6FCF','#FFD23F'] },
   { id:'gen-rose-gold-klasik', group:'Merah Muda & Rose Gold', name:'Rose Gold Klasik', desc:'Nuansa merah muda hangat dipadu emas mawar yang lembut', swatch:['#d0396b','#d46873','#dd7eba','#c69239'] },
   { id:'gen-merah-jambu-senja', group:'Merah Muda & Rose Gold', name:'Merah Jambu Senja', desc:'Nuansa merah muda hangat dipadu emas mawar yang lembut', swatch:['#cf596d','#d58b85','#df9bba','#cfa344'] },
   { id:'gen-pink-mutiara', group:'Merah Muda & Rose Gold', name:'Pink Mutiara', desc:'Nuansa merah muda hangat dipadu emas mawar yang lembut', swatch:['#d45e99','#da8ba0','#e3a1d6','#d7b350'] },
@@ -1976,12 +1977,145 @@ function renderJurnalMengajarView() {
       <td>${escapeHtml(j.materi)}</td>
       <td>${escapeHtml(j.catatan || '—')}</td>
       <td>${j.fotoUrl ? `<a class="btn btn-line btn-sm" href="${j.fotoUrl}" target="_blank" rel="noopener">📷 Lihat foto</a>` : '—'}</td>
-      <td><button class="btn btn-line" data-del-jm="${j.id}" style="color:#E1547A">Hapus</button></td>
+      <td>
+        <button class="btn btn-line" data-edit-jm="${j.id}">Edit</button>
+        <button class="btn btn-line" data-del-jm="${j.id}" style="color:#E1547A">Hapus</button>
+      </td>
     </tr>
   `).join('') : '<tr><td colspan="6" class="empty">Belum ada catatan mengajar untuk kelas ini.</td></tr>';
   tbody.querySelectorAll('[data-del-jm]').forEach(b => b.onclick = () => {
     state.jurnalMengajar = state.jurnalMengajar.filter(j => j.id !== b.dataset.delJm);
     saveState(); renderJurnalMengajarView();
+  });
+  tbody.querySelectorAll('[data-edit-jm]').forEach(b => b.onclick = () => {
+    const item = state.jurnalMengajar.find(j => j.id === b.dataset.editJm);
+    if (item) openJurnalMengajarEditModal(item);
+  });
+}
+
+/* Modal edit catatan mengajar — memperbaiki jam ke/materi/catatan dari
+   catatan yang sudah pernah disimpan, termasuk mengganti/menghapus foto
+   bukti mengajar (unggah ulang ke Drive) tanpa perlu hapus & buat ulang. */
+let mJmFotoFile = null;
+let mJmFotoRemoved = false;
+function openJurnalMengajarEditModal(item) {
+  mJmFotoFile = null;
+  mJmFotoRemoved = false;
+  openModal(`
+    <h3>Edit catatan mengajar</h3>
+    <div class="form-grid">
+      <label class="ctx-field"><span>Jam pelajaran ke</span><input id="mJmJamKe" type="text" placeholder="Misal: 3–4" value="${escapeHtml(item.jamKe || '')}"></label>
+      <label class="ctx-field"><span>Materi yang diajarkan</span><input id="mJmMateri" type="text" value="${escapeHtml(item.materi || '')}"></label>
+      <label class="ctx-field"><span>Catatan khusus</span><input id="mJmCatatan" type="text" value="${escapeHtml(item.catatan || '')}"></label>
+    </div>
+    <div class="form-row">
+      <label class="btn btn-line file-btn">📷 Ambil foto (kamera)
+        <input type="file" id="mJmFotoKamera" accept="image/*" capture="environment" hidden>
+      </label>
+      <label class="btn btn-line file-btn">🖼️ Pilih dari galeri
+        <input type="file" id="mJmFotoGaleri" accept="image/*" hidden>
+      </label>
+      <button type="button" class="btn btn-line" id="mJmFotoHapusBtn" style="${item.fotoUrl ? '' : 'display:none;'} color:#E1547A">Hapus foto</button>
+      <span class="hint" id="mJmFotoNama" style="margin:0"></span>
+    </div>
+    <div id="mJmFotoPreviewWrap" style="${item.fotoUrl ? '' : 'display:none;'} margin:2px 0 -2px">
+      ${item.fotoUrl ? `<a href="${item.fotoUrl}" target="_blank" rel="noopener"><img id="mJmFotoPreview" src="${item.fotoUrl}" alt="Foto bukti mengajar" style="max-width:160px; max-height:160px; border-radius:10px; border:1px solid var(--line); display:block; object-fit:cover"></a>` : `<img id="mJmFotoPreview" alt="Pratinjau foto bukti mengajar" style="max-width:160px; max-height:160px; border-radius:10px; border:1px solid var(--line); display:block; object-fit:cover">`}
+    </div>
+    <p class="hint" style="margin-top:-2px">Pilih foto baru untuk mengganti (unggah ulang ke Drive), atau kosongkan/hapus untuk menghilangkan foto.</p>
+    <div class="modal-actions">
+      <button class="btn btn-line" id="mCancel">Batal</button>
+      <button class="btn btn-primary" id="mSave">Simpan perubahan</button>
+    </div>
+  `, box => {
+    const nameEl = box.querySelector('#mJmFotoNama');
+    const hapusBtn = box.querySelector('#mJmFotoHapusBtn');
+    const previewWrap = box.querySelector('#mJmFotoPreviewWrap');
+    const previewImg = box.querySelector('#mJmFotoPreview');
+    const kameraInput = box.querySelector('#mJmFotoKamera');
+    const galeriInput = box.querySelector('#mJmFotoGaleri');
+
+    function setMJmFoto(file) {
+      mJmFotoFile = file || null;
+      mJmFotoRemoved = false;
+      if (mJmFotoFile) {
+        nameEl.textContent = `Dipilih: ${mJmFotoFile.name}`;
+        hapusBtn.style.display = '';
+        const reader = new FileReader();
+        reader.onload = () => { previewImg.src = reader.result; previewWrap.style.display = ''; };
+        reader.readAsDataURL(mJmFotoFile);
+      } else {
+        nameEl.textContent = '';
+        if (item.fotoUrl) {
+          hapusBtn.style.display = '';
+          previewImg.src = item.fotoUrl;
+          previewWrap.style.display = '';
+        } else {
+          hapusBtn.style.display = 'none';
+          previewWrap.style.display = 'none';
+        }
+      }
+    }
+
+    kameraInput.addEventListener('change', () => { setMJmFoto(kameraInput.files[0]); galeriInput.value = ''; });
+    galeriInput.addEventListener('change', () => { setMJmFoto(galeriInput.files[0]); kameraInput.value = ''; });
+    hapusBtn.addEventListener('click', () => {
+      kameraInput.value = ''; galeriInput.value = '';
+      mJmFotoFile = null;
+      mJmFotoRemoved = true;
+      nameEl.textContent = '';
+      hapusBtn.style.display = 'none';
+      previewWrap.style.display = 'none';
+      previewImg.src = '';
+    });
+
+    box.querySelector('#mCancel').onclick = closeModal;
+    box.querySelector('#mSave').onclick = async () => {
+      const materi = box.querySelector('#mJmMateri').value.trim();
+      if (!materi) { toast('Isi materi yang diajarkan'); return; }
+      const saveBtn = box.querySelector('#mSave');
+
+      if (mJmFotoFile) {
+        if (!state.settings.sheetsUrl) {
+          toast('Hubungkan ke Google Spreadsheet dulu (Pengaturan) supaya foto bisa diunggah ke Drive.');
+        } else {
+          saveBtn.disabled = true;
+          toast('Mengunggah foto bukti mengajar…');
+          try {
+            const dataUrl = await fileToBase64(mJmFotoFile);
+            const res = await fetch(state.settings.sheetsUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                type: 'uploadTeachingProofPhoto',
+                fileName: mJmFotoFile.name, mimeType: mJmFotoFile.type, base64: dataUrl.split(',')[1],
+                kelas: classById(item.classId)?.name || '', tanggal: item.date
+              })
+            });
+            const data = await res.json().catch(() => null);
+            if (data && data.ok && data.url) {
+              item.fotoUrl = data.url;
+              item.fotoFileName = mJmFotoFile.name;
+              toast('Foto baru tersimpan di Google Drive & tercatat di Spreadsheet');
+            } else {
+              toast('Gagal mengunggah foto baru ke Drive. Foto lama tetap dipakai.');
+            }
+          } catch (err) {
+            console.error(err);
+            toast('Gagal mengunggah foto (cek koneksi internet). Foto lama tetap dipakai.');
+          }
+          saveBtn.disabled = false;
+        }
+      } else if (mJmFotoRemoved) {
+        item.fotoUrl = '';
+        item.fotoFileName = '';
+      }
+
+      item.jamKe = box.querySelector('#mJmJamKe').value.trim();
+      item.materi = materi;
+      item.catatan = box.querySelector('#mJmCatatan').value.trim();
+      saveState(true); closeModal(); renderJurnalMengajarView();
+      toast('Catatan mengajar diperbarui');
+    };
   });
 }
 
