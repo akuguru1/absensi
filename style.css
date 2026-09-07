@@ -230,12 +230,13 @@ img, svg, canvas{max-width:100%;}
 }
 .topbar-ctx{display:flex; gap:18px;}
 .ctx-field{display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--ink-soft); font-weight:500;}
-.ctx-field select, .ctx-field input[type=date], .ctx-field input[type=text], .ctx-field input[type=number]{
+.ctx-field select, .ctx-field input[type=date], .ctx-field input[type=text], .ctx-field input[type=number], .ctx-field input[type=time], .ctx-field textarea{
   font-family:var(--font-ui); font-size:13.5px; color:var(--ink);
   border:1.5px solid var(--line); border-radius:var(--radius-sm); padding:8px 11px; background:#fff;
   min-width:180px; transition:border-color .12s ease, box-shadow .12s ease;
 }
-.ctx-field select:focus, .ctx-field input:focus{outline:none; border-color:var(--purple); box-shadow:0 0 0 3px rgba(157,0,255,.18);}
+.ctx-field textarea{resize:vertical; min-height:90px; font-family:var(--font-ui); line-height:1.5;}
+.ctx-field select:focus, .ctx-field input:focus, .ctx-field textarea:focus{outline:none; border-color:var(--purple); box-shadow:0 0 0 3px rgba(157,0,255,.18);}
 .ctx-field input[type=number]{min-width:70px;}
 .ctx-check{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-soft); white-space:nowrap;}
 .ctx-check input{accent-color:var(--purple);}
