@@ -17,6 +17,7 @@ const DEFAULT_STATE = {
   grades: [],             // {id, classId, studentId, type, name, score, date}
   praktikum: [],          // {id, classId, date, judul, alat, k3}
   jurnalMengajar: [],     // {id, classId, date, jamKe, materi, catatan, fotoUrl, fotoFileName} — fotoUrl = link Google Drive (bukti mengajar)
+  reflections: [],        // {id, classId, date, content} — refleksi guru per kelas setelah mengajar
   schedule: [],           // {id, classId, hari, jamKe, jamMulai, jamSelesai}
   modules: [],            // {id, classId, judul, mapel, sumber, fileName, driveUrl, content, tanggal}
   settings: {
@@ -30,6 +31,20 @@ const DEFAULT_STATE = {
     guru: { nama: '', foto: '' }       // foto = data URL, disimpan lokal saja (tidak disinkron, terlalu besar untuk sel spreadsheet)
   }
 };
+
+/* Mengambil hanya bagian "HH:mm" dari sebuah nilai jam, untuk berjaga-jaga
+   kalau nilai yang tersimpan/diterima dari Spreadsheet ternyata masih berupa
+   tanggal-jam lengkap (mis. hasil lama sebelum google-apps-script.gs
+   diperbaiki, semisal "1899-12-30T08:30:00.000Z"). Kalau tidak ditemukan pola
+   jam sama sekali, nilai aslinya dikembalikan apa adanya. */
+function normalizeTimeStr(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  const m = s.match(/(\d{1,2}):(\d{2})/);
+  if (!m) return s;
+  return m[1].padStart(2, '0') + ':' + m[2];
+}
 
 const HARI_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', "Jumat", 'Sabtu', 'Minggu'];
 function todayHari() {
@@ -689,9 +704,13 @@ function loadState() {
   }
 }
 
-function saveState() {
+/* `immediate = true` dipakai untuk catatan penting yang berdiri sendiri
+   (jurnal mengajar, refleksi guru) supaya TIDAK menunggu jeda debounce
+   1.2 detik sebelum mencoba mengirim ke Spreadsheet — mengurangi risiko
+   perubahan "kelewat" terkirim kalau pengguna cepat berpindah halaman. */
+function saveState(immediate) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  scheduleAutoSync();
+  scheduleAutoSync(immediate);
 }
 
 /* ---------------------------- sinkron otomatis (tanpa perlu klik) ---------------------------- */
@@ -703,10 +722,11 @@ function saveState() {
    otomatis begitu koneksi internet kembali tersedia. */
 let autoSyncTimer = null;
 
-function scheduleAutoSync() {
+function scheduleAutoSync(immediate) {
   updateSyncBadge();
   if (!state.settings.sheetsUrl) return;
   clearTimeout(autoSyncTimer);
+  if (immediate) { attemptAutoSync(); return; }
   autoSyncTimer = setTimeout(attemptAutoSync, 1200);
 }
 
@@ -748,7 +768,7 @@ function coreSnapshotStr() {
   return JSON.stringify({
     classes: state.classes, students: state.students, attendance: state.attendance,
     activityPoints: state.activityPoints, activityNotes: state.activityNotes, grades: state.grades,
-    praktikum: state.praktikum, jurnalMengajar: state.jurnalMengajar,
+    praktikum: state.praktikum, jurnalMengajar: state.jurnalMengajar, reflections: state.reflections,
     schedule: state.schedule, modules: state.modules,
     activityCategories: state.activityCategories,
     weights: state.settings.weights, enableUlisan: state.settings.enableUlisan,
@@ -1468,7 +1488,7 @@ function renderNilaiChips() {
       if (!confirm(`Hapus penilaian "${name}" beserta seluruh nilai siswa di dalamnya?`)) return;
       state.grades = state.grades.filter(g => !(g.classId === classId && g.type === jenis && g.name === name));
       if (document.getElementById('nilaiNama').value.trim() === name) document.getElementById('nilaiNama').value = '';
-      saveState(); renderNilaiChips(); renderNilaiInputTable(); renderNilaiRekap();
+      saveState(); renderNilaiChips(); renderNilaiInputTable(); renderNilaiRekap(); renderNilaiLengkapTable();
       toast('Penilaian dihapus');
     });
   });
@@ -1537,6 +1557,7 @@ function wireNilaiAutoSave(tbody, classId, jenis, nama) {
       if (changed) {
         saveState();
         renderNilaiRekap();
+        renderNilaiLengkapTable();
         renderNilaiChips();
         const note = document.getElementById('nilaiAutoSaveNote');
         if (note) note.textContent = '✓ Tersimpan otomatis · ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -1672,6 +1693,101 @@ function renderNilaiRekap() {
   });
 }
 
+/* ---------------------------------------------------------------------
+   TABEL LENGKAP NILAI — menampilkan SETIAP nilai yang pernah diinput
+   (Tugas 1, Tugas 2, ... Ulangan Bab 1, Bab 2, ... dst) untuk seluruh siswa
+   di kelas aktif dalam satu tabel, lengkap dengan rata-rata per jenis dan
+   nilai akhir hasil rumus persentase bobot (lihat computeFinalGrade & menu
+   Pengaturan → "Bobot nilai akhir"). Data yang sama dipakai untuk tombol
+   unduh Excel di bawahnya, supaya isi layar & isi file yang diunduh selalu
+   konsisten satu sama lain. --------------------------------------------- */
+function buildNilaiLengkapMatrix(classId) {
+  const types = activeGradeTypes();
+  // Kolom dinamis: satu kolom per (jenis + nama penilaian) yang PERNAH
+  // diinput untuk kelas ini, mis. "Tugas — Tugas 1", "Tugas — Tugas 2",
+  // "Ulangan Harian — Bab 1", dst. Diurutkan sesuai urutan jenis penilaian,
+  // lalu nama secara alami (Tugas 1, Tugas 2, ... Tugas 10).
+  const columns = [];
+  types.forEach(t => {
+    assessmentNamesFor(classId, t.id).forEach(name => {
+      columns.push({ type: t.id, typeLabel: t.label, name, label: `${t.label} — ${name}` });
+    });
+  });
+  const list = studentsOf(classId);
+  const rows = list.map(s => {
+    const scores = {};
+    columns.forEach(c => {
+      const rec = state.grades.find(g => g.classId === classId && g.studentId === s.id && g.type === c.type && g.name === c.name);
+      scores[c.label] = rec ? rec.score : null;
+    });
+    const perTypeAvg = types.map(t => ({ id: t.id, label: t.label, avg: avgGrade(s.id, classId, t.id) }));
+    const fin = computeFinalGrade(s.id, classId);
+    return { id: s.id, name: s.name, nis: s.nis || '', scores, perTypeAvg, fin };
+  });
+  return { columns, types, rows };
+}
+
+function renderNilaiLengkapTable() {
+  const { classId } = getCtx();
+  const thead = document.querySelector('#nilaiLengkapTable thead tr');
+  const tbody = document.querySelector('#nilaiLengkapTable tbody');
+  if (!thead || !tbody) return;
+  if (!classId) {
+    thead.innerHTML = '<th>Siswa</th>';
+    tbody.innerHTML = '<tr><td class="empty">Pilih kelas di atas terlebih dahulu.</td></tr>';
+    return;
+  }
+  const { columns, types, rows } = buildNilaiLengkapMatrix(classId);
+  if (!columns.length) {
+    thead.innerHTML = '<th>Siswa</th>';
+    tbody.innerHTML = '<tr><td class="empty">Belum ada nilai yang diinput untuk kelas ini.</td></tr>';
+    return;
+  }
+  thead.innerHTML = '<th>Siswa</th>' + columns.map(c => `<th>${escapeHtml(c.label)}</th>`).join('') +
+    types.map(t => `<th>Rata² ${escapeHtml(t.label)}</th>`).join('') + '<th>Nilai akhir</th>';
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.name)}</td>
+      ${columns.map(c => `<td class="numcell">${r.scores[c.label] !== null ? r.scores[c.label] : '—'}</td>`).join('')}
+      ${r.perTypeAvg.map(p => `<td class="numcell">${p.avg !== null ? p.avg.toFixed(1) : '—'}</td>`).join('')}
+      <td class="numcell" style="font-weight:600">${r.fin !== null ? r.fin.toFixed(1) : '—'}</td>
+    </tr>
+  `).join('') : '<tr><td class="empty">Belum ada siswa di kelas ini.</td></tr>';
+}
+
+/* Unduh SELURUH nilai kelas aktif (tiap tugas/ulangan satu-satu, rata-rata
+   per jenis, dan nilai akhir) sebagai satu file Excel — sheet kedua berisi
+   rincian bobot yang dipakai supaya rumus nilai akhirnya jelas. */
+document.getElementById('downloadNilaiKelasBtn') && document.getElementById('downloadNilaiKelasBtn').addEventListener('click', () => {
+  const { classId } = getCtx();
+  if (!classId) { toast('Pilih kelas terlebih dahulu'); return; }
+  const kelas = classById(classId);
+  const { columns, types, rows } = buildNilaiLengkapMatrix(classId);
+  if (!rows.length) { toast('Belum ada siswa di kelas ini'); return; }
+  const header = ['Nama', 'NIS/NISN', ...columns.map(c => c.label), ...types.map(t => `Rata-rata ${t.label}`), 'Nilai akhir'];
+  const aoa = [header, ...rows.map(r => [
+    r.name, r.nis,
+    ...columns.map(c => r.scores[c.label] !== null ? r.scores[c.label] : ''),
+    ...r.perTypeAvg.map(p => p.avg !== null ? Number(p.avg.toFixed(1)) : ''),
+    r.fin !== null ? Number(r.fin.toFixed(1)) : ''
+  ])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Nilai');
+  // Sheet kedua: bobot yang dipakai untuk menghitung nilai akhir, supaya
+  // rumus persentasenya terlihat jelas saat file dibuka.
+  const w = state.settings.weights;
+  const bobotAoa = [
+    ['Jenis penilaian', 'Bobot (%)'],
+    ...activeGradeTypes().map(t => [t.label, w[t.id] || 0])
+  ];
+  const wsBobot = XLSX.utils.aoa_to_sheet(bobotAoa);
+  XLSX.utils.book_append_sheet(wb, wsBobot, 'Bobot Nilai Akhir');
+  const namaFile = `nilai-lengkap-${(kelas?.name || 'kelas').replace(/[^a-z0-9]+/gi, '-')}-${todayStr()}.xlsx`;
+  XLSX.writeFile(wb, namaFile);
+  toast('Nilai kelas ini berhasil diunduh (Excel)');
+});
+
 /* Modal rincian nilai — menampilkan tiap komponen penilaian (Tugas 1, Tugas 2,
    dst.) satu per satu untuk seorang siswa, sebagai dasar nilai rapor. */
 function openNilaiDetailModal(studentId, classId) {
@@ -1744,9 +1860,46 @@ function renderPraktikumTable() {
    JURNAL MENGAJAR
    ========================================================================= */
 
-document.getElementById('jmFoto').addEventListener('change', () => {
-  const file = document.getElementById('jmFoto').files[0];
-  document.getElementById('jmFotoNama').textContent = file ? `Dipilih: ${file.name}` : '';
+/* Foto bukti mengajar bisa dipilih lewat kamera langsung ATAU dari galeri —
+   keduanya disimpan ke satu variabel `jmFotoFile` yang sama supaya proses
+   penyimpanan/unggahnya seragam, apa pun sumbernya. Memilih dari salah satu
+   input otomatis mengosongkan input yang lain supaya tidak tertukar. */
+let jmFotoFile = null;
+function setJmFoto(file) {
+  jmFotoFile = file || null;
+  const nameEl = document.getElementById('jmFotoNama');
+  const hapusBtn = document.getElementById('jmFotoHapusBtn');
+  const previewWrap = document.getElementById('jmFotoPreviewWrap');
+  const previewImg = document.getElementById('jmFotoPreview');
+  if (jmFotoFile) {
+    if (nameEl) nameEl.textContent = `Dipilih: ${jmFotoFile.name}`;
+    if (hapusBtn) hapusBtn.style.display = '';
+    if (previewWrap && previewImg) {
+      const reader = new FileReader();
+      reader.onload = () => { previewImg.src = reader.result; previewWrap.style.display = ''; };
+      reader.readAsDataURL(jmFotoFile);
+    }
+  } else {
+    if (nameEl) nameEl.textContent = '';
+    if (hapusBtn) hapusBtn.style.display = 'none';
+    if (previewWrap) previewWrap.style.display = 'none';
+    if (previewImg) previewImg.src = '';
+  }
+}
+const jmFotoKameraInput = document.getElementById('jmFotoKamera');
+const jmFotoGaleriInput = document.getElementById('jmFotoGaleri');
+jmFotoKameraInput && jmFotoKameraInput.addEventListener('change', () => {
+  setJmFoto(jmFotoKameraInput.files[0]);
+  if (jmFotoGaleriInput) jmFotoGaleriInput.value = '';
+});
+jmFotoGaleriInput && jmFotoGaleriInput.addEventListener('change', () => {
+  setJmFoto(jmFotoGaleriInput.files[0]);
+  if (jmFotoKameraInput) jmFotoKameraInput.value = '';
+});
+document.getElementById('jmFotoHapusBtn') && document.getElementById('jmFotoHapusBtn').addEventListener('click', () => {
+  if (jmFotoKameraInput) jmFotoKameraInput.value = '';
+  if (jmFotoGaleriInput) jmFotoGaleriInput.value = '';
+  setJmFoto(null);
 });
 
 document.getElementById('saveJurnalMengajarBtn').addEventListener('click', async () => {
@@ -1762,8 +1915,7 @@ document.getElementById('saveJurnalMengajarBtn').addEventListener('click', async
     fotoUrl: '', fotoFileName: ''
   };
 
-  const fotoInput = document.getElementById('jmFoto');
-  const fotoFile = fotoInput.files[0];
+  const fotoFile = jmFotoFile;
   const btn = document.getElementById('saveJurnalMengajarBtn');
 
   if (fotoFile) {
@@ -1800,12 +1952,13 @@ document.getElementById('saveJurnalMengajarBtn').addEventListener('click', async
   }
 
   state.jurnalMengajar.push(entry);
-  saveState();
+  saveState(true); // immediate: langsung coba kirim ke Spreadsheet, tanpa menunggu jeda debounce
   document.getElementById('jmJamKe').value = '';
   document.getElementById('jmMateri').value = '';
   document.getElementById('jmCatatan').value = '';
-  fotoInput.value = '';
-  document.getElementById('jmFotoNama').textContent = '';
+  if (jmFotoKameraInput) jmFotoKameraInput.value = '';
+  if (jmFotoGaleriInput) jmFotoGaleriInput.value = '';
+  setJmFoto(null);
   if (!fotoFile) toast('Catatan mengajar disimpan');
   renderAll();
 });
@@ -1829,6 +1982,43 @@ function renderJurnalMengajarView() {
   tbody.querySelectorAll('[data-del-jm]').forEach(b => b.onclick = () => {
     state.jurnalMengajar = state.jurnalMengajar.filter(j => j.id !== b.dataset.delJm);
     saveState(); renderJurnalMengajarView();
+  });
+}
+
+/* =========================================================================
+   REFLEKSI MENGAJAR — refleksi guru per kelas, ditulis setelah mengajar
+   ========================================================================= */
+
+document.getElementById('saveRefleksiBtn') && document.getElementById('saveRefleksiBtn').addEventListener('click', () => {
+  const { classId, date } = getCtx();
+  const content = document.getElementById('refKonten').value.trim();
+  if (!classId) { toast('Pilih kelas terlebih dahulu'); return; }
+  if (!content) { toast('Isi refleksi terlebih dahulu'); return; }
+  state.reflections.push({ id: uid(), classId, date, content });
+  saveState(true); // immediate: langsung coba kirim ke Spreadsheet, tanpa menunggu jeda debounce
+  document.getElementById('refKonten').value = '';
+  toast('Refleksi tersimpan');
+  renderRefleksiView();
+});
+
+function renderRefleksiView() {
+  const { classId, date } = getCtx();
+  const label = document.getElementById('refTanggalLabel');
+  if (label) label.textContent = fmtDateID(date);
+  const tbody = document.querySelector('#refleksiTable tbody');
+  if (!tbody) return;
+  if (!classId) { tbody.innerHTML = '<tr><td colspan="3" class="empty">Pilih kelas di atas terlebih dahulu.</td></tr>'; return; }
+  const list = state.reflections.filter(r => r.classId === classId).sort((a, b) => b.date.localeCompare(a.date));
+  tbody.innerHTML = list.length ? list.map(r => `
+    <tr>
+      <td class="numcell">${escapeHtml(r.date)}</td>
+      <td style="white-space:pre-wrap">${escapeHtml(r.content)}</td>
+      <td><button class="btn btn-line" data-del-ref="${r.id}" style="color:#E1547A">Hapus</button></td>
+    </tr>
+  `).join('') : '<tr><td colspan="3" class="empty">Belum ada refleksi untuk kelas ini.</td></tr>';
+  tbody.querySelectorAll('[data-del-ref]').forEach(b => b.onclick = () => {
+    state.reflections = state.reflections.filter(r => r.id !== b.dataset.delRef);
+    saveState(); renderRefleksiView();
   });
 }
 
@@ -1877,7 +2067,7 @@ function renderJadwalView() {
   if (!tbody) return;
   const rows = HARI_LIST.flatMap(h => state.schedule.filter(j => j.hari === h)).sort((a, b) => {
     if (a.hari !== b.hari) return HARI_LIST.indexOf(a.hari) - HARI_LIST.indexOf(b.hari);
-    return (a.jamMulai || '').localeCompare(b.jamMulai || '');
+    return normalizeTimeStr(a.jamMulai).localeCompare(normalizeTimeStr(b.jamMulai));
   });
   tbody.innerHTML = rows.length ? rows.map(j => {
     const kelas = classById(j.classId);
@@ -1885,13 +2075,58 @@ function renderJadwalView() {
       <td>${escapeHtml(j.hari)}</td>
       <td>${kelas ? escapeHtml(kelas.name) + (kelas.subject ? ' — ' + escapeHtml(kelas.subject) : '') : '<em>Kelas dihapus</em>'}</td>
       <td class="numcell">${escapeHtml(j.jamKe || '—')}</td>
-      <td class="numcell">${escapeHtml(j.jamMulai || '—')}${j.jamSelesai ? ' – ' + escapeHtml(j.jamSelesai) : ''}</td>
-      <td><button class="btn btn-line" data-del-jadwal="${j.id}" style="color:#E1547A">Hapus</button></td>
+      <td class="numcell">${escapeHtml(normalizeTimeStr(j.jamMulai) || '—')}${j.jamSelesai ? ' – ' + escapeHtml(normalizeTimeStr(j.jamSelesai)) : ''}</td>
+      <td>
+        <button class="btn btn-line" data-edit-jadwal="${j.id}">Edit</button>
+        <button class="btn btn-line" data-del-jadwal="${j.id}" style="color:#E1547A">Hapus</button>
+      </td>
     </tr>`;
   }).join('') : '<tr><td colspan="5" class="empty">Belum ada jadwal. Tambahkan di atas agar Anda diingatkan.</td></tr>';
   tbody.querySelectorAll('[data-del-jadwal]').forEach(b => b.onclick = () => {
     state.schedule = state.schedule.filter(j => j.id !== b.dataset.delJadwal);
     saveState(); renderJadwalView();
+  });
+  tbody.querySelectorAll('[data-edit-jadwal]').forEach(b => b.onclick = () => {
+    const item = state.schedule.find(j => j.id === b.dataset.editJadwal);
+    if (item) openJadwalEditModal(item);
+  });
+}
+
+/* Modal edit jadwal — memperbaiki kelas/hari/jam ke/jam mulai/jam selesai
+   dari jadwal yang sudah pernah ditambahkan, tanpa perlu hapus & buat ulang. */
+function openJadwalEditModal(item) {
+  const list = activeClasses();
+  const kelasOptions = list.map(c => `<option value="${c.id}" ${c.id === item.classId ? 'selected' : ''}>${escapeHtml(c.name)}${c.subject ? ' — ' + escapeHtml(c.subject) : ''}</option>`).join('')
+    || `<option value="${item.classId}" selected>${escapeHtml(classById(item.classId)?.name || 'Kelas dihapus')}</option>`;
+  const hariOptions = HARI_LIST.map(h => `<option value="${h}" ${h === item.hari ? 'selected' : ''}>${h}</option>`).join('');
+  openModal(`
+    <h3>Edit jadwal</h3>
+    <div class="form-grid">
+      <label class="ctx-field"><span>Kelas</span><select id="mJadwalKelas">${kelasOptions}</select></label>
+      <label class="ctx-field"><span>Hari</span><select id="mJadwalHari">${hariOptions}</select></label>
+      <label class="ctx-field"><span>Jam ke</span><input id="mJadwalJamKe" type="text" placeholder="Misal: 3–4" value="${escapeHtml(item.jamKe || '')}"></label>
+      <label class="ctx-field"><span>Jam mulai</span><input id="mJadwalJamMulai" type="time" value="${escapeHtml(normalizeTimeStr(item.jamMulai))}"></label>
+      <label class="ctx-field"><span>Jam selesai</span><input id="mJadwalJamSelesai" type="time" value="${escapeHtml(normalizeTimeStr(item.jamSelesai))}"></label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-line" id="mCancel">Batal</button>
+      <button class="btn btn-primary" id="mSave">Simpan perubahan</button>
+    </div>
+  `, box => {
+    box.querySelector('#mCancel').onclick = closeModal;
+    box.querySelector('#mSave').onclick = () => {
+      const classId = box.querySelector('#mJadwalKelas').value;
+      const jamMulai = box.querySelector('#mJadwalJamMulai').value;
+      if (!classId) { toast('Pilih kelas terlebih dahulu'); return; }
+      if (!jamMulai) { toast('Isi jam mulai'); return; }
+      item.classId = classId;
+      item.hari = box.querySelector('#mJadwalHari').value;
+      item.jamKe = box.querySelector('#mJadwalJamKe').value.trim();
+      item.jamMulai = jamMulai;
+      item.jamSelesai = box.querySelector('#mJadwalJamSelesai').value;
+      saveState(); closeModal(); renderJadwalView(); renderDashboardJadwal();
+      toast('Jadwal diperbarui');
+    };
   });
 }
 
@@ -1908,10 +2143,12 @@ function renderDashboardJadwal() {
   const nowHm = new Date().toTimeString().slice(0, 5);
   box.innerHTML = list.length ? list.map(j => {
     const kelas = classById(j.classId);
-    const isNext = j.jamMulai && j.jamMulai >= nowHm;
+    const jamMulai = normalizeTimeStr(j.jamMulai);
+    const jamSelesai = normalizeTimeStr(j.jamSelesai);
+    const isNext = jamMulai && jamMulai >= nowHm;
     return `<div class="attn-row${isNext ? ' is-next' : ''}">
       <span>${kelas ? escapeHtml(kelas.name) : '—'}${kelas && kelas.subject ? ' <small style="color:var(--ink-soft)">· ' + escapeHtml(kelas.subject) + '</small>' : ''}</span>
-      <span class="attn-tag ${isNext ? 'ok' : ''}">${escapeHtml(j.jamMulai || '—')}${j.jamSelesai ? '–' + escapeHtml(j.jamSelesai) : ''}${j.jamKe ? ' · jam ke-' + escapeHtml(j.jamKe) : ''}</span>
+      <span class="attn-tag ${isNext ? 'ok' : ''}">${escapeHtml(jamMulai || '—')}${jamSelesai ? '–' + escapeHtml(jamSelesai) : ''}${j.jamKe ? ' · jam ke-' + escapeHtml(j.jamKe) : ''}</span>
     </div>`;
   }).join('') : `<p class="empty">Tidak ada jadwal mengajar untuk hari ${todayHari()}.</p>`;
 }
@@ -1928,13 +2165,15 @@ function checkJadwalReminder() {
   state.schedule.filter(j => j.hari === hari && j.jamMulai).forEach(j => {
     const key = j.id + '_' + todayStr();
     if (_notifiedToday.has(key)) return;
-    const [h, m] = j.jamMulai.split(':').map(Number);
+    const jamMulai = normalizeTimeStr(j.jamMulai);
+    const [h, m] = jamMulai.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return;
     const target = new Date(now); target.setHours(h, m, 0, 0);
     const diffMin = (target - now) / 60000;
     if (diffMin >= 0 && diffMin <= 10) {
       _notifiedToday.add(key);
       const kelas = classById(j.classId);
-      const msg = `Pengingat: ${kelas ? kelas.name : 'Kelas'} akan mulai pukul ${j.jamMulai}`;
+      const msg = `Pengingat: ${kelas ? kelas.name : 'Kelas'} akan mulai pukul ${jamMulai}`;
       toast(msg);
       if (window.Notification && Notification.permission === 'granted') {
         try { new Notification('Buku Kelas — Pengingat Jadwal', { body: msg }); } catch (e) {}
@@ -2407,6 +2646,7 @@ async function syncToSheets(silent) {
     grades: state.grades.map(g => ({ ...g, kelas: classById(g.classId)?.name || '', siswa: studentById(g.studentId)?.name || '' })),
     praktikum: state.praktikum.map(p => ({ ...p, kelas: classById(p.classId)?.name || '' })),
     jurnalMengajar: state.jurnalMengajar.map(j => ({ ...j, kelas: classById(j.classId)?.name || '' })),
+    reflections: state.reflections.map(r => ({ ...r, kelas: classById(r.classId)?.name || '' })),
     schedule: state.schedule.map(j => ({ ...j, kelas: classById(j.classId)?.name || '' })),
     modules: state.modules.map(m => ({ ...m, kelas: classById(m.classId)?.name || '', content: (m.content || '').slice(0, 45000) })),
     pengaturan: {
@@ -2417,12 +2657,24 @@ async function syncToSheets(silent) {
     syncedAt: new Date().toISOString()
   };
   try {
-    await fetch(url, {
+    // PENTING: sengaja TIDAK memakai mode 'no-cors' di sini. Dengan 'no-cors',
+    // respons dari Apps Script menjadi "buram" (opaque) sehingga fetch selalu
+    // dianggap "berhasil" oleh browser walau sebenarnya Apps Script gagal
+    // menuliskan data (mis. skrip belum di-deploy ulang, error, dsb.) — ini
+    // penyebab data (terutama jurnal mengajar) kadang terlihat "terkirim"
+    // padahal tidak benar-benar tersimpan di Spreadsheet. Memakai Content-Type
+    // 'text/plain' (tanpa header custom lain) tetap membuat permintaan ini
+    // dianggap "simple request" oleh browser, jadi tidak butuh preflight CORS,
+    // dan kita tetap bisa membaca respons JSON sesungguhnya dari Apps Script.
+    const res = await fetch(url, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
+    const data = await res.json().catch(() => null);
+    if (!data || data.ok !== true) {
+      throw new Error((data && data.error) || 'Respons tidak valid dari Apps Script');
+    }
     state.settings.lastSync = new Date().toISOString();
     state.settings.syncedSnapshot = coreSnapshotStr();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -2431,7 +2683,8 @@ async function syncToSheets(silent) {
     return true;
   } catch (err) {
     console.error('Sinkron (kirim) gagal', err);
-    if (!silent) toast('Gagal mengirim data. Periksa koneksi internet dan URL.');
+    updateSyncBadge();
+    if (!silent) toast('Gagal mengirim data. Periksa koneksi internet dan URL Apps Script.');
     return false;
   }
 }
@@ -2470,7 +2723,10 @@ function applyCloudSnapshot(data) {
   state.grades = data.grades || [];
   state.praktikum = data.praktikum || [];
   state.jurnalMengajar = data.jurnalMengajar || [];
-  state.schedule = data.schedule || [];
+  state.reflections = data.reflections || [];
+  // Normalisasi jam mulai/selesai berjaga-jaga terhadap data lama yang
+  // sempat tersimpan salah (lihat normalizeTimeStr di atas).
+  state.schedule = (data.schedule || []).map(j => ({ ...j, jamMulai: normalizeTimeStr(j.jamMulai), jamSelesai: normalizeTimeStr(j.jamSelesai) }));
   state.modules = data.modules || [];
   if (data.pengaturan) {
     if (data.pengaturan.weights) state.settings.weights = Object.assign({}, DEFAULT_STATE.settings.weights, data.pengaturan.weights);
@@ -2507,8 +2763,10 @@ function renderAll() {
   renderNilaiChips();
   renderNilaiInputTable();
   renderNilaiRekap();
+  renderNilaiLengkapTable();
   renderPraktikumTable();
   renderJurnalMengajarView();
+  renderRefleksiView();
   renderJadwalView();
   renderModulAjarView();
   renderRekapView();
