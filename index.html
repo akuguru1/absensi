@@ -233,6 +233,13 @@
         <button class="btn btn-primary" id="saveAbsensiBtn">Simpan absensi</button>
       </div>
 
+      <div class="toolrow">
+        <span class="hint" style="margin:0">Unduh rekap absensi kelas ini (dari pertemuan pertama sampai terakhir):</span>
+        <button class="btn btn-line" id="downloadAbsensiRekapExcelBtn">⬇ Excel</button>
+        <button class="btn btn-line" id="downloadAbsensiRekapWordBtn">⬇ Word</button>
+        <button class="btn btn-line" id="downloadAbsensiRekapPdfBtn">⬇ PDF</button>
+      </div>
+
       <div class="tbl-wrap"><table class="tbl" id="absensiTable">
         <thead><tr><th>Siswa</th><th>Status</th><th>Catatan</th></tr></thead>
         <tbody></tbody>
@@ -336,7 +343,15 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h2>Riwayat praktikum — kelas aktif</h2></div>
+        <div class="panel-head">
+          <h2>Riwayat praktikum — kelas aktif</h2>
+          <div class="panel-head-actions">
+            <button class="btn btn-line" id="downloadPraktikumRekapExcelBtn">⬇ Excel</button>
+            <button class="btn btn-line" id="downloadPraktikumRekapWordBtn">⬇ Word</button>
+            <button class="btn btn-line" id="downloadPraktikumRekapPdfBtn">⬇ PDF</button>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:-6px">Unduh rekap jurnal praktikum kelas ini, dari catatan pertama sampai terakhir.</p>
         <div class="tbl-wrap"><table class="tbl" id="praktikumTable">
           <thead><tr><th>Tanggal</th><th>Judul</th><th>Alat &amp; bahan</th><th>K3</th><th></th></tr></thead>
           <tbody></tbody>
@@ -377,7 +392,15 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h2>Riwayat mengajar — kelas aktif</h2></div>
+        <div class="panel-head">
+          <h2>Riwayat mengajar — kelas aktif</h2>
+          <div class="panel-head-actions">
+            <button class="btn btn-line" id="downloadJurnalMengajarRekapExcelBtn">⬇ Excel</button>
+            <button class="btn btn-line" id="downloadJurnalMengajarRekapWordBtn">⬇ Word</button>
+            <button class="btn btn-line" id="downloadJurnalMengajarRekapPdfBtn">⬇ PDF</button>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:-6px">Unduh rekap jurnal mengajar kelas ini, dari catatan pertama sampai terakhir.</p>
         <div class="tbl-wrap"><table class="tbl" id="jurnalMengajarTable">
           <thead><tr><th>Tanggal</th><th>Jam ke</th><th>Materi</th><th>Catatan khusus</th><th>Bukti foto</th><th></th></tr></thead>
           <tbody></tbody>
@@ -403,7 +426,18 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h2>Riwayat refleksi — kelas aktif</h2><small>Tersimpan di perangkat ini &amp; otomatis terkirim ke Spreadsheet</small></div>
+        <div class="panel-head">
+          <div>
+            <h2>Riwayat refleksi — kelas aktif</h2>
+            <small>Tersimpan di perangkat ini &amp; otomatis terkirim ke Spreadsheet</small>
+          </div>
+          <div class="panel-head-actions">
+            <button class="btn btn-line" id="downloadRefleksiRekapExcelBtn">⬇ Excel</button>
+            <button class="btn btn-line" id="downloadRefleksiRekapWordBtn">⬇ Word</button>
+            <button class="btn btn-line" id="downloadRefleksiRekapPdfBtn">⬇ PDF</button>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:-6px">Unduh rekap refleksi mengajar kelas ini, dari catatan pertama sampai terakhir.</p>
         <div class="tbl-wrap"><table class="tbl" id="refleksiTable">
           <thead><tr><th style="width:120px">Tanggal</th><th>Refleksi</th><th></th></tr></thead>
           <tbody></tbody>
