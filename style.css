@@ -101,6 +101,20 @@ html[data-theme="magenta-limau"]{
   --ink:#360A22; --ink-soft:#95637E; --line:#FBD3E9; --bg:#FFF5FA;
   --glow1:#FFDCEF; --glow2:#EAFAC2; --glow3:#FFF6D0; --shadow-rgb:168,15,92;
 }
+/* Pink & Mint Segar — pink cerah dipadu hijau mint/tosca sebagai warna
+   kedua, SENGAJA tanpa ungu (violet/purple) maupun emas (gold) sama sekali,
+   supaya jadi kombinasi yang benar-benar berbeda dari palet "Pink, Ungu &
+   Emas" bawaan maupun palet lain yang tetap memakai aksen emas. Variabel
+   --purple/--violet/--gold tetap diisi (dipakai di banyak tempat lain di
+   style.css, mis. gradasi sidebar) tapi warnanya diarahkan ke rona
+   pink/mint, bukan ungu/emas sungguhan. */
+html[data-theme="pink-mint"]{
+  --purple:#E01166; --purple-dark:#B0165B; --purple-deep:#3A0A22; --purple-soft:#FFE3EF;
+  --violet:#F0508C; --pink:#FF5C97; --lilac:#FFB8D2;
+  --gold:#20B999; --gold-dark:#158F76; --gold-soft:#E1F7EF;
+  --ink:#3A1330; --ink-soft:#9A7086; --line:#FBDCE9; --bg:#FFF6FA;
+  --glow1:#FFE1EF; --glow2:#D9F5EC; --glow3:#E1F7EF; --shadow-rgb:176,22,91;
+}
 
 /* --- Tema Alam, Hewan & Lainnya --- */
 html[data-theme="hutan"]{
