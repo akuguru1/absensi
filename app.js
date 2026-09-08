@@ -1962,12 +1962,23 @@ async function submitTeachingProofPhoto(fotoFile, kelas, tanggal) {
 }
 
 /* Menerjemahkan kode error dari submitTeachingProofPhoto() menjadi pesan
-   yang mudah dipahami guru (bukan istilah teknis), dengan saran tindak lanjut. */
+   yang mudah dipahami guru (bukan istilah teknis), dengan saran tindak lanjut.
+   ---- PERBAIKAN BUG: sebelumnya SEMUA jenis kegagalan (selain offline/timeout)
+   ditampilkan dengan teks generik "Gagal mengunggah foto ke Drive" tanpa
+   alasan sama sekali — padahal Apps Script (google-apps-script.gs) sudah
+   mengembalikan pesan error yang lebih rinci lewat { ok:false, error: ... }.
+   Alasan aslinya dulu dibuang begitu saja sehingga tidak mungkin didiagnosis.
+   Sekarang alasan asli dari server ditampilkan supaya penyebabnya (mis. izin
+   Drive belum diberikan, deployment Apps Script belum di-deploy ulang/kadaluarsa,
+   folder tidak bisa dibuat, dsb.) langsung terlihat oleh guru/admin. */
 function fotoUploadErrorMsg(error, konteks) {
   const sisa = konteks === 'edit' ? 'Foto lama tetap dipakai.' : 'Catatan tetap disimpan tanpa foto; unggah ulang lewat tombol Edit nanti.';
   if (error === 'offline') return `Sedang offline — foto tidak bisa diunggah sekarang. ${sisa}`;
   if (error === 'timeout') return `Unggah foto memakan waktu terlalu lama (koneksi lambat/tidak stabil). ${sisa}`;
-  return `Gagal mengunggah foto ke Drive. ${sisa}`;
+  if (error === 'network') return `Gagal mengunggah foto (koneksi terputus atau URL Apps Script tidak bisa dihubungi — cek juga apakah ada masalah CORS/izin akses). ${sisa}`;
+  if (error === 'invalid-response') return `Gagal mengunggah foto: respons dari server Apps Script tidak dikenali. Kemungkinan besar URL Apps Script di Pengaturan sudah tidak berlaku, atau perlu Deploy ulang sebagai versi baru (lihat TUTORIAL.md). ${sisa}`;
+  // Untuk error lain: ini adalah pesan asli langsung dari Apps Script (mis. alasan Google Drive menolak permintaan), jadi tampilkan apa adanya supaya bisa didiagnosis.
+  return `Gagal mengunggah foto ke Drive — alasan dari server: ${error} ${sisa}`;
 }
 
 /* Foto bukti mengajar bisa dipilih lewat kamera langsung ATAU dari galeri —
@@ -2580,15 +2591,35 @@ document.getElementById('guruNamaInput') && document.getElementById('guruNamaInp
   toast('Nama guru disimpan');
 });
 
+/* Perbaikan bug "gagal unggah foto dari galeri" (foto profil guru):
+   sebelumnya foto langsung disimpan sebagai data URL ke localStorage tanpa
+   dipadatkan. Foto dari GALERI sering berukuran besar (beberapa MB), dan
+   base64-nya bisa melebihi batas kapasitas localStorage (~5-10MB per situs)
+   sehingga localStorage.setItem() melempar QuotaExceededError secara diam2 —
+   foto terlihat "gagal" tersimpan tanpa pesan yang jelas. Sekarang foto
+   dipadatkan dulu (sama seperti foto bukti mengajar) dan errornya ditangani
+   supaya pengguna tahu apa yang terjadi. */
 document.getElementById('guruFotoInput') && document.getElementById('guruFotoInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) { toast('File harus berupa gambar'); return; }
-  const dataUrl = await fileToBase64(file);
-  state.settings.guru.foto = dataUrl;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); // foto disimpan lokal saja, tidak disinkron ke Spreadsheet
-  renderGuruProfile();
-  toast('Foto profil diperbarui (tersimpan di perangkat ini)');
+  if (!file.type.startsWith('image/')) { toast('File harus berupa gambar'); e.target.value = ''; return; }
+  try {
+    const compressed = await compressImageForUpload(file, 800, 0.75); // foto profil kecil saja, tak perlu resolusi besar
+    const dataUrl = await fileToBase64(compressed);
+    state.settings.guru.foto = dataUrl;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); // foto disimpan lokal saja, tidak disinkron ke Spreadsheet
+    renderGuruProfile();
+    toast('Foto profil diperbarui (tersimpan di perangkat ini)');
+  } catch (err) {
+    console.error('Gagal menyimpan foto profil', err);
+    if (err && err.name === 'QuotaExceededError') {
+      toast('Foto terlalu besar untuk disimpan di perangkat ini. Coba pilih foto lain atau perkecil dulu.');
+    } else {
+      toast('Gagal menyimpan foto profil. Coba lagi.');
+    }
+  } finally {
+    e.target.value = ''; // supaya bisa pilih file yang sama lagi kalau perlu coba ulang
+  }
 });
 
 document.getElementById('guruFotoHapusBtn') && document.getElementById('guruFotoHapusBtn').addEventListener('click', () => {
