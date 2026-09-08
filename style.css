@@ -291,7 +291,10 @@ h1{font-size:23px; margin:0 0 4px; letter-spacing:-.3px; font-weight:800; color:
   border-radius:999px; padding:9px 16px; cursor:pointer;
   border:1.5px solid var(--line); background:#fff; color:var(--ink);
   transition:background .12s ease, border-color .12s ease, box-shadow .12s ease, transform .08s ease;
+  display:inline-flex; align-items:center; justify-content:center; gap:4px;
+  text-decoration:none; line-height:1.3; white-space:nowrap; vertical-align:middle;
 }
+a.btn:link, a.btn:visited, a.btn:hover, a.btn:active{color:var(--ink); text-decoration:none;}
 .btn:hover{border-color:var(--lilac); box-shadow:var(--shadow-sm);}
 .btn:active{transform:scale(.98);}
 .btn-primary{background:linear-gradient(135deg, var(--purple) 0%, var(--purple-dark) 100%); border-color:transparent; color:#fff; box-shadow:0 4px 14px rgba(157,0,255,.38);}
@@ -344,6 +347,13 @@ h1{font-size:23px; margin:0 0 4px; letter-spacing:-.3px; font-weight:800; color:
 }
 .tbl input:focus{outline:none; border-color:var(--purple); box-shadow:0 0 0 3px rgba(157,0,255,.18);}
 .tbl .numcell{font-family:var(--font-mono);}
+
+/* Sel tabel dengan lebih dari satu tombol aksi (mis. Edit + Hapus, atau
+   Buka file + Lihat isi + Hapus) dibuat flex-wrap agar saat layar sempit
+   (HP) tombolnya turun ke baris baru dengan rapi, bukan bertumpuk/tumpang tindih. */
+.tbl td:has(.btn ~ .btn){
+  display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+}
 
 /* Status pills for absensi */
 .status-group{display:flex; gap:6px; flex-wrap:wrap;}
@@ -471,6 +481,13 @@ h1{font-size:23px; margin:0 0 4px; letter-spacing:-.3px; font-weight:800; color:
 body.no-scroll{overflow:hidden;}
 
 :focus-visible{outline:2px solid var(--purple); outline-offset:2px;}
+/* Field dalam .ctx-field / .tbl sudah punya penanda fokus sendiri (border ungu +
+   bayangan lembut). Tanpa baris ini, aturan :focus-visible di atas menambahkan
+   kotak outline kedua di luar border tersebut, sehingga terlihat seperti ada
+   "border" ganda/aneh saat field diklik atau ditab — misalnya pada field
+   "Jam ke" di modal Edit jadwal. */
+.ctx-field select:focus-visible, .ctx-field input:focus-visible, .ctx-field textarea:focus-visible,
+.tbl input:focus-visible{outline:none;}
 
 /* ===== Pemilih tema & palet warna (Pengaturan) ===== */
 .theme-search-input{
