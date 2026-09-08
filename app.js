@@ -1862,8 +1862,9 @@ function renderPraktikumTable() {
    JURNAL MENGAJAR
    ========================================================================= */
 
-/* ---- Perbaikan unggah foto bukti mengajar: kompres otomatis, batas waktu,
-   & coba ulang sekali sebelum menyerah ----
+/* ---- Perbaikan unggah foto bukti mengajar: kompres otomatis (makin
+   agresif di koneksi lambat & di tiap percobaan ulang), batas waktu,
+   & coba ulang sampai 3x sebelum menyerah ----
    Foto dari GALERI (bukan kamera langsung) sering berukuran sangat besar
    (bisa 5–20 MB untuk kamera HP modern), sehingga pengubahannya ke base64
    lalu dikirim lewat koneksi seluler biasa bisa lambat/gagal/timeout — inilah
@@ -1871,11 +1872,45 @@ function renderPraktikumTable() {
    internetnya sendiri sebenarnya baik-baik saja. Foto dipadatkan dulu di sisi
    perangkat (maksimal 1600px sisi terpanjang, JPEG) sebelum diunggah supaya
    jauh lebih ringan & cepat, tetap cukup jelas untuk bukti mengajar. */
-function compressImageForUpload(file, maxDim, quality) {
-  maxDim = maxDim || 1600; quality = quality || 0.72;
+/* Mendeteksi kondisi koneksi (kalau browser mendukung Network Information
+   API) supaya foto bisa dipadatkan LEBIH AGRESIF lagi saat sinyal lemah
+   (mis. 2G/3G atau kecepatan terukur di bawah ~300 KB/s). Tidak semua
+   browser mendukung ini (terutama iOS Safari) — kalau tidak tersedia,
+   dianggap "tidak diketahui" dan tetap pakai target padatan standar. */
+function getConnectionQuality() {
+  try {
+    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (!c) return 'unknown';
+    if (c.saveData) return 'slow';
+    if (c.effectiveType && /^(slow-2g|2g|3g)$/.test(c.effectiveType)) return 'slow';
+    if (typeof c.downlink === 'number' && c.downlink > 0 && c.downlink < 1.5) return 'slow'; // < ~190 KB/s
+    return 'ok';
+  } catch (e) { return 'unknown'; }
+}
+
+/* ---- Perbaikan bug "gagal unggah foto dari galeri di koneksi lambat" ----
+   Sebelumnya foto selalu dipadatkan ke target yang sama (maks 1600px,
+   kualitas 0.72) apa pun kondisi koneksinya. Di koneksi yang sangat lambat
+   (mis. terukur ~88 KB/s di lapangan), hasil padatan itu (bisa >500KB, jadi
+   >650KB setelah dikonversi base64) tetap cukup besar sehingga transfernya
+   rawan terputus di tengah jalan sebelum selesai — inilah penyebab foto
+   gagal terunggah padahal kirim data teks biasa (jauh lebih kecil) berhasil.
+   Sekarang target padatan otomatis diperkecil lagi kalau koneksi terdeteksi
+   lambat, dan `attemptNumber` dipakai supaya percobaan ulang otomatis makin
+   agresif memadatkan foto (foto lebih kecil = lebih mungkin berhasil). */
+function compressImageForUpload(file, maxDim, quality, attemptNumber) {
+  const slow = getConnectionQuality() === 'slow';
+  const n = attemptNumber || 0; // 0 = percobaan pertama, 1 = percobaan ulang pertama, dst
+  if (!maxDim) maxDim = slow ? 1000 : 1600;
+  if (!quality) quality = slow ? 0.6 : 0.72;
+  // setiap percobaan ulang, padatkan lebih kecil lagi (maks 3 tingkat) —
+  // supaya kalau percobaan sebelumnya gagal karena ukuran, peluang berhasil
+  // di percobaan berikutnya makin besar tanpa perlu campur tangan pengguna.
+  maxDim = Math.max(600, Math.round(maxDim * Math.pow(0.75, Math.min(n, 3))));
+  quality = Math.max(0.4, quality - 0.1 * Math.min(n, 3));
   return new Promise(resolve => {
     if (!file || !file.type || !file.type.startsWith('image/')) { resolve(file); return; }
-    if (file.size <= 700 * 1024) { resolve(file); return; } // sudah cukup kecil, tak perlu dipadatkan
+    if (file.size <= 700 * 1024 && n === 0) { resolve(file); return; } // sudah cukup kecil di percobaan pertama, tak perlu dipadatkan
     const img = new Image();
     const objUrl = URL.createObjectURL(file);
     const done = result => { URL.revokeObjectURL(objUrl); resolve(result); };
@@ -1923,8 +1958,12 @@ function fetchWithTimeout(url, options, timeoutMs) {
    - Kalau perangkat terdeteksi offline, langsung berhenti tanpa mencoba
      fetch sama sekali (lebih cepat & pesannya lebih jelas daripada menunggu
      sampai timeout).
-   - Kalau percobaan pertama gagal (jaringan seluler kadang putus sesaat),
-     dicoba SEKALI lagi secara otomatis sebelum benar-benar menyerah.
+   ---- PERBAIKAN: di koneksi yang sangat lambat, satu kali percobaan ulang
+   dengan padatan yang sama seringkali TETAP gagal (payload-nya masih terlalu
+   besar untuk koneksi itu). Sekarang dicoba sampai TIGA kali (percobaan
+   pertama + 2 percobaan ulang), dan setiap percobaan ulang foto dipadatkan
+   lebih kecil lagi (lihat compressImageForUpload) + jeda sebentar sebelum
+   mencoba lagi (memberi waktu koneksi yang sempat putus untuk pulih). ----
    Tidak pernah melempar exception — selalu mengembalikan
    { ok, url?, error? } di mana error adalah salah satu dari:
    'offline' | 'timeout' | 'network' (atau pesan dari server). */
@@ -1932,9 +1971,13 @@ async function submitTeachingProofPhoto(fotoFile, kelas, tanggal) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return { ok: false, error: 'offline' };
   }
-  const compressed = await compressImageForUpload(fotoFile);
-  const attempt = async () => {
+  const MAX_ATTEMPTS = 3;
+  const attempt = async (attemptNumber) => {
+    const compressed = await compressImageForUpload(fotoFile, null, null, attemptNumber);
     const dataUrl = await fileToBase64(compressed);
+    // percobaan ulang diberi waktu lebih longgar (koneksi lambat butuh lebih
+    // banyak waktu, bukan cuma foto lebih kecil) — 45s, lalu 60s, lalu 75s.
+    const timeoutMs = 45000 + attemptNumber * 15000;
     const res = await fetchWithTimeout(state.settings.sheetsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1943,22 +1986,27 @@ async function submitTeachingProofPhoto(fotoFile, kelas, tanggal) {
         fileName: compressed.name, mimeType: compressed.type, base64: dataUrl.split(',')[1],
         kelas: kelas || '', tanggal: tanggal || ''
       })
-    }, 45000);
+    }, timeoutMs);
     const data = await res.json().catch(() => null);
     if (data && data.ok && data.url) return { ok: true, url: data.url };
     return { ok: false, error: (data && data.error) || 'invalid-response' };
   };
-  try {
-    return await attempt();
-  } catch (err) {
-    console.error('Unggah foto — percobaan pertama gagal, mencoba lagi…', err);
+  let lastErr = null;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
     try {
-      return await attempt();
-    } catch (err2) {
-      console.error('Unggah foto — percobaan kedua juga gagal', err2);
-      return { ok: false, error: (err2 && err2.name === 'AbortError') ? 'timeout' : 'network' };
+      const result = await attempt(i);
+      // Kalau server sendiri yang menjawab "gagal" (bukan koneksi putus),
+      // mengulang dengan foto lebih kecil tidak akan membantu — langsung
+      // kembalikan supaya pengguna lihat alasan aslinya dari server.
+      if (result.ok || result.error !== 'invalid-response') return result;
+      lastErr = result;
+    } catch (err) {
+      console.error(`Unggah foto — percobaan ke-${i + 1} gagal`, err);
+      lastErr = { ok: false, error: (err && err.name === 'AbortError') ? 'timeout' : 'network' };
+      if (i < MAX_ATTEMPTS - 1) await new Promise(r => setTimeout(r, 1500 * (i + 1))); // jeda sebelum coba lagi
     }
   }
+  return lastErr || { ok: false, error: 'network' };
 }
 
 /* Menerjemahkan kode error dari submitTeachingProofPhoto() menjadi pesan
