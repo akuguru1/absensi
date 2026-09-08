@@ -87,6 +87,7 @@ const THEMES = [
   { id:'biru-kobalt',    group:'Palet warna',            name:'Biru Kobalt & Perak', desc:'Biru tegas, formal & bersih', swatch:['#2F5FD6','#7FA6F2','#1D3F9E','#C7CDD9'] },
   { id:'monokrom',       group:'Palet warna',            name:'Monokrom Elegan', desc:'Abu grafit + aksen emas', swatch:['#4B4F58','#D4AF37','#1B1D22','#9AA0AC'] },
   { id:'magenta-limau',  group:'Palet warna',            name:'Magenta Neon & Limau', desc:'Kombinasi ceria & berani', swatch:['#E4187A','#B4E023','#A80F5C','#FFD23F'] },
+  { id:'pink-mint',      group:'Palet warna',            name:'Pink & Mint Segar', desc:'Pink cerah dipadu hijau mint — tanpa ungu maupun emas', swatch:['#FF5C97','#20B999','#B0165B','#7FE0C8'] },
   // --- Tema alam, hewan & lainnya ---
   { id:'hutan',          group:'Tema alam, hewan & lainnya', name:'Tumbuhan / Hutan Hijau', desc:'Hijau dedaunan yang menenangkan', swatch:['#2E8B57','#3FA66B','#8FD19E','#D8A93B'] },
   { id:'sakura',         group:'Tema alam, hewan & lainnya', name:'Kebun Bunga Sakura', desc:'Pink lembut ala bunga sakura', swatch:['#DB5A97','#F9A8D4','#FDCFE8','#E8B923'] },
@@ -1861,6 +1862,114 @@ function renderPraktikumTable() {
    JURNAL MENGAJAR
    ========================================================================= */
 
+/* ---- Perbaikan unggah foto bukti mengajar: kompres otomatis, batas waktu,
+   & coba ulang sekali sebelum menyerah ----
+   Foto dari GALERI (bukan kamera langsung) sering berukuran sangat besar
+   (bisa 5–20 MB untuk kamera HP modern), sehingga pengubahannya ke base64
+   lalu dikirim lewat koneksi seluler biasa bisa lambat/gagal/timeout — inilah
+   penyebab utama pesan "Gagal mengunggah foto (cek koneksi internet)" padahal
+   internetnya sendiri sebenarnya baik-baik saja. Foto dipadatkan dulu di sisi
+   perangkat (maksimal 1600px sisi terpanjang, JPEG) sebelum diunggah supaya
+   jauh lebih ringan & cepat, tetap cukup jelas untuk bukti mengajar. */
+function compressImageForUpload(file, maxDim, quality) {
+  maxDim = maxDim || 1600; quality = quality || 0.72;
+  return new Promise(resolve => {
+    if (!file || !file.type || !file.type.startsWith('image/')) { resolve(file); return; }
+    if (file.size <= 700 * 1024) { resolve(file); return; } // sudah cukup kecil, tak perlu dipadatkan
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    const done = result => { URL.revokeObjectURL(objUrl); resolve(result); };
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+          else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => {
+          if (blob && blob.size < file.size) {
+            const newName = file.name.replace(/\.(png|jpe?g|webp|heic|heif|gif|bmp)$/i, '') + '.jpg';
+            done(new File([blob], newName, { type: 'image/jpeg' }));
+          } else {
+            done(file); // hasil padatan malah lebih besar/gagal — pakai file asli
+          }
+        }, 'image/jpeg', quality);
+      } catch (e) {
+        done(file); // canvas gagal (mis. format tidak didukung) — pakai file asli, jangan sampai unggah gagal total
+      }
+    };
+    img.onerror = () => done(file);
+    img.src = objUrl;
+  });
+}
+
+/* fetch dengan batas waktu — supaya unggahan yang macet di tengah jalan
+   (koneksi lambat/putus) tidak menggantung tanpa akhir, dan agar pesan
+   errornya bisa membedakan "waktu habis" dari "benar-benar tidak ada
+   koneksi", supaya pengguna tahu apa yang sebenarnya terjadi. */
+function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || 45000);
+  return fetch(url, Object.assign({}, options, { signal: controller.signal })).finally(() => clearTimeout(timer));
+}
+
+/* Mengunggah satu foto bukti mengajar ke Drive lewat Apps Script.
+   - Foto dipadatkan dulu (lihat compressImageForUpload) supaya foto besar
+     dari galeri tidak membuat unggahan gagal/lambat.
+   - Kalau perangkat terdeteksi offline, langsung berhenti tanpa mencoba
+     fetch sama sekali (lebih cepat & pesannya lebih jelas daripada menunggu
+     sampai timeout).
+   - Kalau percobaan pertama gagal (jaringan seluler kadang putus sesaat),
+     dicoba SEKALI lagi secara otomatis sebelum benar-benar menyerah.
+   Tidak pernah melempar exception — selalu mengembalikan
+   { ok, url?, error? } di mana error adalah salah satu dari:
+   'offline' | 'timeout' | 'network' (atau pesan dari server). */
+async function submitTeachingProofPhoto(fotoFile, kelas, tanggal) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return { ok: false, error: 'offline' };
+  }
+  const compressed = await compressImageForUpload(fotoFile);
+  const attempt = async () => {
+    const dataUrl = await fileToBase64(compressed);
+    const res = await fetchWithTimeout(state.settings.sheetsUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        type: 'uploadTeachingProofPhoto',
+        fileName: compressed.name, mimeType: compressed.type, base64: dataUrl.split(',')[1],
+        kelas: kelas || '', tanggal: tanggal || ''
+      })
+    }, 45000);
+    const data = await res.json().catch(() => null);
+    if (data && data.ok && data.url) return { ok: true, url: data.url };
+    return { ok: false, error: (data && data.error) || 'invalid-response' };
+  };
+  try {
+    return await attempt();
+  } catch (err) {
+    console.error('Unggah foto — percobaan pertama gagal, mencoba lagi…', err);
+    try {
+      return await attempt();
+    } catch (err2) {
+      console.error('Unggah foto — percobaan kedua juga gagal', err2);
+      return { ok: false, error: (err2 && err2.name === 'AbortError') ? 'timeout' : 'network' };
+    }
+  }
+}
+
+/* Menerjemahkan kode error dari submitTeachingProofPhoto() menjadi pesan
+   yang mudah dipahami guru (bukan istilah teknis), dengan saran tindak lanjut. */
+function fotoUploadErrorMsg(error, konteks) {
+  const sisa = konteks === 'edit' ? 'Foto lama tetap dipakai.' : 'Catatan tetap disimpan tanpa foto; unggah ulang lewat tombol Edit nanti.';
+  if (error === 'offline') return `Sedang offline — foto tidak bisa diunggah sekarang. ${sisa}`;
+  if (error === 'timeout') return `Unggah foto memakan waktu terlalu lama (koneksi lambat/tidak stabil). ${sisa}`;
+  return `Gagal mengunggah foto ke Drive. ${sisa}`;
+}
+
 /* Foto bukti mengajar bisa dipilih lewat kamera langsung ATAU dari galeri —
    keduanya disimpan ke satu variabel `jmFotoFile` yang sama supaya proses
    penyimpanan/unggahnya seragam, apa pun sumbernya. Memilih dari salah satu
@@ -1925,43 +2034,50 @@ document.getElementById('saveJurnalMengajarBtn').addEventListener('click', async
     } else {
       btn.disabled = true;
       toast('Mengunggah foto bukti mengajar…');
-      try {
-        const dataUrl = await fileToBase64(fotoFile);
-        const res = await fetch(state.settings.sheetsUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            type: 'uploadTeachingProofPhoto',
-            fileName: fotoFile.name, mimeType: fotoFile.type, base64: dataUrl.split(',')[1],
-            kelas: classById(classId)?.name || '', tanggal: date
-          })
-        });
-        const data = await res.json().catch(() => null);
-        if (data && data.ok && data.url) {
-          entry.fotoUrl = data.url;
-          entry.fotoFileName = fotoFile.name;
-          toast('Foto tersimpan di Google Drive & tercatat di Spreadsheet');
-        } else {
-          toast('Gagal mengunggah foto ke Drive. Catatan tetap disimpan tanpa foto.');
-        }
-      } catch (err) {
-        console.error(err);
-        toast('Gagal mengunggah foto (cek koneksi internet). Catatan tetap disimpan tanpa foto.');
+      const result = await submitTeachingProofPhoto(fotoFile, classById(classId)?.name || '', date);
+      if (result.ok) {
+        entry.fotoUrl = result.url;
+        entry.fotoFileName = fotoFile.name;
+        toast('Foto tersimpan di Google Drive & tercatat di Spreadsheet');
+      } else {
+        toast(fotoUploadErrorMsg(result.error, 'tambah'));
       }
       btn.disabled = false;
     }
   }
 
   state.jurnalMengajar.push(entry);
-  saveState(true); // immediate: langsung coba kirim ke Spreadsheet, tanpa menunggu jeda debounce
   document.getElementById('jmJamKe').value = '';
   document.getElementById('jmMateri').value = '';
   document.getElementById('jmCatatan').value = '';
   if (jmFotoKameraInput) jmFotoKameraInput.value = '';
   if (jmFotoGaleriInput) jmFotoGaleriInput.value = '';
   setJmFoto(null);
-  if (!fotoFile) toast('Catatan mengajar disimpan');
   renderAll();
+
+  /* PENTING (perbaikan bug "foto tidak terkirim ke spreadsheet"): sebelumnya
+     bagian ini hanya memanggil saveState(true) yang menjadwalkan sinkron
+     otomatis secara DIAM-DIAM (silent) lewat attemptAutoSync() — kalau
+     sinkronnya gagal (mis. sempat offline sesaat, URL Apps Script belum
+     versi terbaru, dsb.), guru tidak diberi tahu sama sekali, sehingga
+     terlihat seperti "tersimpan" padahal foto/catatannya belum benar-benar
+     tercatat di Spreadsheet. Di sini kita sinkron secara EKSPLISIT dan
+     memberi tahu hasilnya (berhasil/gagal) dengan jelas. */
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  clearTimeout(autoSyncTimer);
+  updateSyncBadge();
+  if (state.settings.sheetsUrl) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast('Catatan mengajar disimpan di perangkat. Sedang offline — akan otomatis terkirim ke Spreadsheet begitu koneksi tersedia.');
+    } else {
+      const synced = await syncToSheets(true);
+      toast(synced
+        ? 'Catatan mengajar tersimpan & tercatat di Spreadsheet'
+        : 'Catatan tersimpan di perangkat, tapi GAGAL terkirim ke Spreadsheet (cek koneksi internet / URL Apps Script). Akan dicoba lagi otomatis.');
+    }
+  } else {
+    toast('Catatan mengajar disimpan');
+  }
 });
 
 function renderJurnalMengajarView() {
@@ -2080,28 +2196,13 @@ function openJurnalMengajarEditModal(item) {
         } else {
           saveBtn.disabled = true;
           toast('Mengunggah foto bukti mengajar…');
-          try {
-            const dataUrl = await fileToBase64(mJmFotoFile);
-            const res = await fetch(state.settings.sheetsUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({
-                type: 'uploadTeachingProofPhoto',
-                fileName: mJmFotoFile.name, mimeType: mJmFotoFile.type, base64: dataUrl.split(',')[1],
-                kelas: classById(item.classId)?.name || '', tanggal: item.date
-              })
-            });
-            const data = await res.json().catch(() => null);
-            if (data && data.ok && data.url) {
-              item.fotoUrl = data.url;
-              item.fotoFileName = mJmFotoFile.name;
-              toast('Foto baru tersimpan di Google Drive & tercatat di Spreadsheet');
-            } else {
-              toast('Gagal mengunggah foto baru ke Drive. Foto lama tetap dipakai.');
-            }
-          } catch (err) {
-            console.error(err);
-            toast('Gagal mengunggah foto (cek koneksi internet). Foto lama tetap dipakai.');
+          const result = await submitTeachingProofPhoto(mJmFotoFile, classById(item.classId)?.name || '', item.date);
+          if (result.ok) {
+            item.fotoUrl = result.url;
+            item.fotoFileName = mJmFotoFile.name;
+            toast('Foto baru tersimpan di Google Drive & tercatat di Spreadsheet');
+          } else {
+            toast(fotoUploadErrorMsg(result.error, 'edit'));
           }
           saveBtn.disabled = false;
         }
@@ -2113,8 +2214,29 @@ function openJurnalMengajarEditModal(item) {
       item.jamKe = box.querySelector('#mJmJamKe').value.trim();
       item.materi = materi;
       item.catatan = box.querySelector('#mJmCatatan').value.trim();
-      saveState(true); closeModal(); renderJurnalMengajarView();
-      toast('Catatan mengajar diperbarui');
+      closeModal(); renderJurnalMengajarView();
+
+      /* PENTING (perbaikan bug "foto tidak terkirim ke spreadsheet" saat
+         edit): sinkron dilakukan secara EKSPLISIT di sini (bukan hanya lewat
+         saveState(true) yang sinkronnya diam-diam/silent) supaya guru benar-
+         benar diberi tahu kalau perubahan (termasuk foto baru) GAGAL
+         terkirim ke Spreadsheet, bukan cuma diberi tahu "diperbarui" padahal
+         belum tentu tersimpan di Spreadsheet. */
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      clearTimeout(autoSyncTimer);
+      updateSyncBadge();
+      if (state.settings.sheetsUrl) {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          toast('Catatan diperbarui di perangkat. Sedang offline — akan otomatis terkirim ke Spreadsheet begitu koneksi tersedia.');
+        } else {
+          const synced = await syncToSheets(true);
+          toast(synced
+            ? 'Catatan mengajar diperbarui & tercatat di Spreadsheet'
+            : 'Catatan tersimpan di perangkat, tapi GAGAL terkirim ke Spreadsheet (cek koneksi internet / URL Apps Script). Akan dicoba lagi otomatis.');
+        }
+      } else {
+        toast('Catatan mengajar diperbarui');
+      }
     };
   });
 }
@@ -2359,13 +2481,15 @@ document.getElementById('uploadModulBtn') && document.getElementById('uploadModu
 
   if (state.settings.sheetsUrl) {
     try {
-      const res = await fetch(state.settings.sheetsUrl, {
+      // Catatan: fetch dengan mode 'no-cors' tidak bisa dibaca; di sini kita
+      // memakai mode default supaya bisa membaca URL Drive hasil upload.
+      // Dipakai fetchWithTimeout (bukan fetch biasa) supaya kalau file besar
+      // & koneksi lambat, unggahan tidak menggantung tanpa batas waktu.
+      const res = await fetchWithTimeout(state.settings.sheetsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ type: 'uploadModuleFile', fileName: file.name, mimeType: file.type, base64: dataUrl.split(',')[1], judul })
-      });
-      // Catatan: fetch dengan mode 'no-cors' tidak bisa dibaca; di sini kita
-      // memakai mode default supaya bisa membaca URL Drive hasil upload.
+      }, 60000);
       const data = await res.json().catch(() => null);
       if (data && data.ok && data.url) {
         item.driveUrl = data.url;
@@ -2375,7 +2499,10 @@ document.getElementById('uploadModulBtn') && document.getElementById('uploadModu
       }
     } catch (err) {
       console.error(err);
-      toast('File tersimpan di perangkat ini saja (gagal mengunggah ke Drive).');
+      const pesan = (err && err.name === 'AbortError')
+        ? 'File tersimpan di perangkat ini saja (waktu unggah habis — koneksi lambat/tidak stabil).'
+        : 'File tersimpan di perangkat ini saja (gagal mengunggah ke Drive, cek koneksi internet).';
+      toast(pesan);
     }
   } else {
     toast('Modul disimpan di perangkat ini. Hubungkan ke Google Spreadsheet (Pengaturan) agar bisa dibuka dari HP/PC lain.');
@@ -2646,6 +2773,155 @@ document.getElementById('exportWordBtn').addEventListener('click', () => {
   link.href = URL.createObjectURL(blob);
   link.download = `rekap-${kelas}-${rekapFrom.value}_${rekapTo.value}.doc`;
   link.click();
+});
+
+/* =========================================================================
+   UNDUH REKAPAN PER KELAS (dari catatan PERTAMA sampai TERAKHIR)
+   — dipakai di menu Absensi, Jurnal Mengajar, Refleksi Mengajar, & Jurnal
+   Praktikum. Berbeda dari "Rekap" di atas (yang perlu pilih rentang
+   tanggal), tombol-tombol ini langsung mengunduh SELURUH riwayat kelas yang
+   sedang aktif, tanpa perlu mengatur tanggal — cocok untuk laporan akhir
+   semester/tahun per kelas. Tersedia dalam 3 format: Excel, Word, & PDF.
+   ========================================================================= */
+
+function safeFileNamePart(str) {
+  return String(str || '').trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'kelas';
+}
+
+function periodeLabelFromDates(dates) {
+  const valid = (dates || []).filter(Boolean).sort();
+  if (!valid.length) return 'Belum ada data tercatat untuk kelas ini';
+  return `Periode: ${fmtDateID(valid[0])} s/d ${fmtDateID(valid[valid.length - 1])}`;
+}
+
+function downloadAoaExcel(aoa, sheetName, filename) {
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
+}
+
+function downloadAoaPdf(title, subtitle, aoa, filename) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(13); doc.text(title, 14, 15);
+  let startY = 20;
+  if (subtitle) { doc.setFontSize(9); doc.text(subtitle, 14, 21); startY = 26; }
+  doc.autoTable({ head: [aoa[0]], body: aoa.slice(1), startY, styles: { fontSize: 8, cellWidth: 'wrap' }, headStyles: { fillColor: [225, 46, 136] } });
+  doc.save(filename);
+}
+
+function downloadAoaWord(title, subtitle, aoa, filename) {
+  const tableHtml = `<table border="1" style="border-collapse:collapse;font-family:Calibri;font-size:12px">
+    <thead><tr>${aoa[0].map(h => `<th style="padding:4px;background:#E1547A;color:#fff">${escapeHtml(String(h))}</th>`).join('')}</tr></thead>
+    <tbody>${aoa.slice(1).map(row => `<tr>${row.map(c => `<td style="padding:4px">${escapeHtml(String(c))}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>`;
+  const html = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head>
+    <body>
+      <h2 style="font-family:Calibri">${escapeHtml(title)}</h2>
+      ${subtitle ? `<p style="font-family:Calibri;font-size:12px">${escapeHtml(subtitle)}</p>` : ''}
+      ${tableHtml}
+    </body></html>`;
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+
+/* Kumpulan pembangun data (AOA = array-of-array) untuk tiap menu, dipakai
+   bersama oleh ketiga tombol unduh (Excel/Word/PDF) di menu masing-masing. */
+function absensiRekapAoa(classId) {
+  const header = ['Siswa', 'Hadir', 'Sakit', 'Izin', 'Alpha', 'Total Pertemuan', '% Kehadiran'];
+  const body = studentsOf(classId).map(s => {
+    const recs = state.attendance.filter(a => a.studentId === s.id && a.classId === classId);
+    const hadir = recs.filter(a => a.status === 'Hadir').length;
+    const sakit = recs.filter(a => a.status === 'Sakit').length;
+    const izin = recs.filter(a => a.status === 'Izin').length;
+    const alpha = recs.filter(a => a.status === 'Alpha').length;
+    const pct = recs.length ? (hadir / recs.length) * 100 : 0;
+    return [s.name, hadir, sakit, izin, alpha, recs.length, pct.toFixed(0) + '%'];
+  });
+  return [header, ...body];
+}
+
+function jurnalMengajarRekapAoa(classId) {
+  const header = ['Tanggal', 'Jam ke', 'Materi', 'Catatan Khusus', 'Link Foto Bukti'];
+  const list = state.jurnalMengajar.filter(j => j.classId === classId)
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.jamKe || '').localeCompare(String(b.jamKe || '')));
+  const body = list.map(j => [j.date, j.jamKe || '-', j.materi || '-', j.catatan || '-', j.fotoUrl || '-']);
+  return [header, ...body];
+}
+
+function refleksiRekapAoa(classId) {
+  const header = ['Tanggal', 'Refleksi'];
+  const list = state.reflections.filter(r => r.classId === classId).sort((a, b) => a.date.localeCompare(b.date));
+  const body = list.map(r => [r.date, r.content || '-']);
+  return [header, ...body];
+}
+
+function praktikumRekapAoa(classId) {
+  const header = ['Tanggal', 'Judul Percobaan', 'Alat & Bahan', 'Catatan Keselamatan (K3)'];
+  const list = state.praktikum.filter(p => p.classId === classId).sort((a, b) => a.date.localeCompare(b.date));
+  const body = list.map(p => [p.date, p.judul || '-', p.alat || '-', p.k3 || '-']);
+  return [header, ...body];
+}
+
+/* Wiring generik: satu set (Excel/Word/PDF) untuk satu menu, dengan validasi
+   & pesan yang sama (pilih kelas dulu, tidak ada data, dsb.) supaya perilaku
+   keempat menu konsisten. */
+function wireRekapKelasButtons(opts) {
+  const { idExcel, idWord, idPdf, aoaFn, judul, filePrefix, dateSource } = opts;
+  function context() {
+    const { classId } = getCtx();
+    if (!classId) { toast('Pilih kelas terlebih dahulu'); return null; }
+    const kelas = classById(classId)?.name || 'Kelas';
+    const aoa = aoaFn(classId);
+    if (aoa.length <= 1) { toast('Belum ada data untuk kelas ini'); return null; }
+    const subtitle = periodeLabelFromDates(dateSource(classId));
+    return { classId, kelas, aoa, subtitle };
+  }
+  const btnExcel = document.getElementById(idExcel);
+  const btnWord = document.getElementById(idWord);
+  const btnPdf = document.getElementById(idPdf);
+  btnExcel && btnExcel.addEventListener('click', () => {
+    const ctx = context(); if (!ctx) return;
+    downloadAoaExcel(ctx.aoa, 'Rekap', `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.xlsx`);
+    toast('Rekapan berhasil diunduh (Excel)');
+  });
+  btnWord && btnWord.addEventListener('click', () => {
+    const ctx = context(); if (!ctx) return;
+    downloadAoaWord(`${judul} — Kelas ${ctx.kelas}`, ctx.subtitle, ctx.aoa, `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.doc`);
+    toast('Rekapan berhasil diunduh (Word)');
+  });
+  btnPdf && btnPdf.addEventListener('click', () => {
+    const ctx = context(); if (!ctx) return;
+    downloadAoaPdf(`${judul} — Kelas ${ctx.kelas}`, ctx.subtitle, ctx.aoa, `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.pdf`);
+    toast('Rekapan berhasil diunduh (PDF)');
+  });
+}
+
+wireRekapKelasButtons({
+  idExcel: 'downloadAbsensiRekapExcelBtn', idWord: 'downloadAbsensiRekapWordBtn', idPdf: 'downloadAbsensiRekapPdfBtn',
+  aoaFn: absensiRekapAoa, judul: 'Rekap Absensi', filePrefix: 'rekap-absensi',
+  dateSource: classId => state.attendance.filter(a => a.classId === classId).map(a => a.date)
+});
+wireRekapKelasButtons({
+  idExcel: 'downloadJurnalMengajarRekapExcelBtn', idWord: 'downloadJurnalMengajarRekapWordBtn', idPdf: 'downloadJurnalMengajarRekapPdfBtn',
+  aoaFn: jurnalMengajarRekapAoa, judul: 'Rekap Jurnal Mengajar', filePrefix: 'rekap-jurnal-mengajar',
+  dateSource: classId => state.jurnalMengajar.filter(j => j.classId === classId).map(j => j.date)
+});
+wireRekapKelasButtons({
+  idExcel: 'downloadRefleksiRekapExcelBtn', idWord: 'downloadRefleksiRekapWordBtn', idPdf: 'downloadRefleksiRekapPdfBtn',
+  aoaFn: refleksiRekapAoa, judul: 'Rekap Refleksi Mengajar', filePrefix: 'rekap-refleksi',
+  dateSource: classId => state.reflections.filter(r => r.classId === classId).map(r => r.date)
+});
+wireRekapKelasButtons({
+  idExcel: 'downloadPraktikumRekapExcelBtn', idWord: 'downloadPraktikumRekapWordBtn', idPdf: 'downloadPraktikumRekapPdfBtn',
+  aoaFn: praktikumRekapAoa, judul: 'Rekap Jurnal Praktikum', filePrefix: 'rekap-praktikum',
+  dateSource: classId => state.praktikum.filter(p => p.classId === classId).map(p => p.date)
 });
 
 /* =========================================================================
