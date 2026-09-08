@@ -376,10 +376,10 @@
         </div>
         <div class="form-row">
           <label class="btn btn-line file-btn">📷 Ambil foto (kamera)
-            <input type="file" id="jmFotoKamera" accept="image/*" capture="environment" hidden>
+            <input type="file" id="jmFotoKamera" accept="image/*,.heic,.heif" capture="environment" hidden>
           </label>
           <label class="btn btn-line file-btn">🖼️ Pilih dari galeri
-            <input type="file" id="jmFotoGaleri" accept="image/*" hidden>
+            <input type="file" id="jmFotoGaleri" accept="image/*,.heic,.heif" hidden>
           </label>
           <button type="button" class="btn btn-line" id="jmFotoHapusBtn" style="display:none; color:#E1547A">Hapus foto</button>
           <span class="hint" id="jmFotoNama" style="margin:0"></span>
@@ -561,7 +561,7 @@
           </span>
           <label class="ctx-field" style="flex:1.4"><span>Nama guru</span><input type="text" id="guruNamaInput" placeholder="Nama lengkap Anda"></label>
           <label class="btn btn-line file-btn">Ganti foto
-            <input type="file" id="guruFotoInput" accept="image/*" hidden>
+            <input type="file" id="guruFotoInput" accept="image/*,.heic,.heif" hidden>
           </label>
           <button class="btn btn-line" id="guruFotoHapusBtn">Hapus foto</button>
         </div>
@@ -624,6 +624,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<!-- Dipakai untuk mengonversi foto format HEIC/HEIF (format asli foto iPhone) ke JPEG
+     di peramban, karena hampir semua peramban (selain Safari) tidak bisa menampilkan
+     atau memproses foto HEIC secara langsung. Lihat penggunaannya di app.js (fungsi
+     `toUploadableImage`). -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
