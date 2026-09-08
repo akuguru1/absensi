@@ -1898,6 +1898,40 @@ function getConnectionQuality() {
    Sekarang target padatan otomatis diperkecil lagi kalau koneksi terdeteksi
    lambat, dan `attemptNumber` dipakai supaya percobaan ulang otomatis makin
    agresif memadatkan foto (foto lebih kecil = lebih mungkin berhasil). */
+/* Perbaikan bug "gagal upload foto format HEIC": foto dari iPhone (terutama
+   yang diambil dengan pengaturan kamera "Kualitas Tinggi/High Efficiency")
+   tersimpan dalam format HEIC/HEIF, bukan JPEG/PNG. Hampir semua peramban
+   SELAIN Safari (Chrome, Firefox, Edge, Chrome Android, dst) tidak bisa
+   membaca/menampilkan format ini sama sekali — <img> gagal dimuat, canvas
+   gagal memproses, dan pratinjau foto pun kosong. Bahkan di Safari sendiri
+   file HEIC yang diunggah apa adanya sering tidak bisa dibuka lewat tautan
+   Google Drive. Solusinya: begitu foto dipilih, deteksi apakah formatnya
+   HEIC/HEIF (lewat MIME type ATAU akhiran nama file, karena sebagian
+   peramban melaporkan MIME type kosong untuk HEIC) lalu konversi ke JPEG
+   di peramban memakai heic2any SEBELUM foto dipakai untuk pratinjau/
+   dipadatkan/diunggah. Kalau library gagal dimuat atau konversi gagal
+   (mis. file sebenarnya rusak), foto asli tetap dipakai apa adanya supaya
+   proses tidak berhenti total — pengguna tetap bisa lanjut seperti biasa. */
+function isHeicFile(file) {
+  if (!file) return false;
+  const type = (file.type || '').toLowerCase();
+  if (type === 'image/heic' || type === 'image/heif' || type === 'image/heic-sequence' || type === 'image/heif-sequence') return true;
+  return /\.hei[cf]$/i.test(file.name || '');
+}
+async function toUploadableImage(file) {
+  if (!isHeicFile(file)) return file;
+  if (typeof heic2any !== 'function') return file; // library belum termuat — pakai file asli, jangan sampai macet
+  try {
+    const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+    const outBlob = Array.isArray(converted) ? converted[0] : converted; // heic2any bisa mengembalikan array utk file multi-gambar
+    const newName = (file.name || 'foto').replace(/\.hei[cf]$/i, '') + '.jpg';
+    return new File([outBlob], newName, { type: 'image/jpeg' });
+  } catch (e) {
+    console.error('Gagal mengonversi foto HEIC ke JPEG, memakai file asli', e);
+    return file;
+  }
+}
+
 function compressImageForUpload(file, maxDim, quality, attemptNumber) {
   const slow = getConnectionQuality() === 'slow';
   const n = attemptNumber || 0; // 0 = percobaan pertama, 1 = percobaan ulang pertama, dst
@@ -2057,12 +2091,16 @@ function setJmFoto(file) {
 }
 const jmFotoKameraInput = document.getElementById('jmFotoKamera');
 const jmFotoGaleriInput = document.getElementById('jmFotoGaleri');
-jmFotoKameraInput && jmFotoKameraInput.addEventListener('change', () => {
-  setJmFoto(jmFotoKameraInput.files[0]);
+jmFotoKameraInput && jmFotoKameraInput.addEventListener('change', async () => {
+  const raw = jmFotoKameraInput.files[0];
+  if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+  setJmFoto(raw ? await toUploadableImage(raw) : null);
   if (jmFotoGaleriInput) jmFotoGaleriInput.value = '';
 });
-jmFotoGaleriInput && jmFotoGaleriInput.addEventListener('change', () => {
-  setJmFoto(jmFotoGaleriInput.files[0]);
+jmFotoGaleriInput && jmFotoGaleriInput.addEventListener('change', async () => {
+  const raw = jmFotoGaleriInput.files[0];
+  if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+  setJmFoto(raw ? await toUploadableImage(raw) : null);
   if (jmFotoKameraInput) jmFotoKameraInput.value = '';
 });
 document.getElementById('jmFotoHapusBtn') && document.getElementById('jmFotoHapusBtn').addEventListener('click', () => {
@@ -2185,10 +2223,10 @@ function openJurnalMengajarEditModal(item) {
     </div>
     <div class="form-row">
       <label class="btn btn-line file-btn">📷 Ambil foto (kamera)
-        <input type="file" id="mJmFotoKamera" accept="image/*" capture="environment" hidden>
+        <input type="file" id="mJmFotoKamera" accept="image/*,.heic,.heif" capture="environment" hidden>
       </label>
       <label class="btn btn-line file-btn">🖼️ Pilih dari galeri
-        <input type="file" id="mJmFotoGaleri" accept="image/*" hidden>
+        <input type="file" id="mJmFotoGaleri" accept="image/*,.heic,.heif" hidden>
       </label>
       <button type="button" class="btn btn-line" id="mJmFotoHapusBtn" style="${item.fotoUrl ? '' : 'display:none;'} color:#E1547A">Hapus foto</button>
       <span class="hint" id="mJmFotoNama" style="margin:0"></span>
@@ -2231,8 +2269,18 @@ function openJurnalMengajarEditModal(item) {
       }
     }
 
-    kameraInput.addEventListener('change', () => { setMJmFoto(kameraInput.files[0]); galeriInput.value = ''; });
-    galeriInput.addEventListener('change', () => { setMJmFoto(galeriInput.files[0]); kameraInput.value = ''; });
+    kameraInput.addEventListener('change', async () => {
+      const raw = kameraInput.files[0];
+      if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+      setMJmFoto(raw ? await toUploadableImage(raw) : null);
+      galeriInput.value = '';
+    });
+    galeriInput.addEventListener('change', async () => {
+      const raw = galeriInput.files[0];
+      if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+      setMJmFoto(raw ? await toUploadableImage(raw) : null);
+      kameraInput.value = '';
+    });
     hapusBtn.addEventListener('click', () => {
       kameraInput.value = ''; galeriInput.value = '';
       mJmFotoFile = null;
@@ -2648,9 +2696,14 @@ document.getElementById('guruNamaInput') && document.getElementById('guruNamaInp
    dipadatkan dulu (sama seperti foto bukti mengajar) dan errornya ditangani
    supaya pengguna tahu apa yang terjadi. */
 document.getElementById('guruFotoInput') && document.getElementById('guruFotoInput').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
+  let file = e.target.files[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) { toast('File harus berupa gambar'); e.target.value = ''; return; }
+  // Beberapa peramban melaporkan file.type KOSONG utk foto HEIC/HEIF (bukan
+  // "image/heic"), jadi pengecekan format tidak boleh cuma mengandalkan MIME
+  // type — cek juga akhiran nama filenya lewat isHeicFile().
+  if (!file.type.startsWith('image/') && !isHeicFile(file)) { toast('File harus berupa gambar'); e.target.value = ''; return; }
+  if (isHeicFile(file)) toast('Mengonversi foto HEIC…');
+  file = await toUploadableImage(file);
   try {
     const compressed = await compressImageForUpload(file, 800, 0.75); // foto profil kecil saja, tak perlu resolusi besar
     const dataUrl = await fileToBase64(compressed);
