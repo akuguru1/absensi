@@ -17,6 +17,7 @@ const DEFAULT_STATE = {
   grades: [],             // {id, classId, studentId, type, name, score, date}
   praktikum: [],          // {id, classId, date, judul, alat, k3}
   jurnalMengajar: [],     // {id, classId, date, jamKe, materi, catatan, fotoUrl, fotoFileName} — fotoUrl = link Google Drive (bukti mengajar)
+  jurnalKegiatan: [],     // {id, date, jamKe, kegiatan, catatan, fotoUrl, fotoFileName} — jurnal kegiatan guru (TIDAK terikat kelas tertentu, mis. rapat, piket, workshop, dsb.)
   reflections: [],        // {id, classId, date, content} — refleksi guru per kelas setelah mengajar
   schedule: [],           // {id, classId, hari, jamKe, jamMulai, jamSelesai}
   modules: [],            // {id, classId, judul, mapel, sumber, fileName, driveUrl, content, tanggal}
@@ -488,12 +489,13 @@ function renderThemePicker(activeId, query) {
     });
   });
   root.querySelectorAll('[data-del-custom]').forEach(el => {
-    el.addEventListener('click', (ev) => {
+    el.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       const id = el.dataset.delCustom;
       const list = loadCustomThemes();
       const t = list.find(x => x.id === id);
-      if (!confirm(`Hapus palet "${t ? t.name : ''}" ini?`)) return;
+      const ok = await confirmDialog(`Hapus palet "${t ? t.name : ''}" ini secara permanen?`);
+      if (!ok) return;
       saveCustomThemes(list.filter(x => x.id !== id));
       if (loadTheme() === id) applyTheme(DEFAULT_THEME);
       else renderThemePicker(loadTheme(), query);
@@ -669,12 +671,13 @@ function renderCustomThemeList() {
     });
   });
   root.querySelectorAll('[data-del-custom2]').forEach(el => {
-    el.addEventListener('click', (ev) => {
+    el.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       const id = el.dataset.delCustom2;
       const l = loadCustomThemes();
       const t = l.find(x => x.id === id);
-      if (!confirm(`Hapus palet "${t ? t.name : ''}" ini?`)) return;
+      const ok = await confirmDialog(`Hapus palet "${t ? t.name : ''}" ini secara permanen?`);
+      if (!ok) return;
       saveCustomThemes(l.filter(x => x.id !== id));
       if (loadTheme() === id) applyTheme(DEFAULT_THEME);
       renderCustomThemeList();
@@ -770,7 +773,7 @@ function coreSnapshotStr() {
   return JSON.stringify({
     classes: state.classes, students: state.students, attendance: state.attendance,
     activityPoints: state.activityPoints, activityNotes: state.activityNotes, grades: state.grades,
-    praktikum: state.praktikum, jurnalMengajar: state.jurnalMengajar, reflections: state.reflections,
+    praktikum: state.praktikum, jurnalMengajar: state.jurnalMengajar, jurnalKegiatan: state.jurnalKegiatan, reflections: state.reflections,
     schedule: state.schedule, modules: state.modules,
     activityCategories: state.activityCategories,
     weights: state.settings.weights, enableUlisan: state.settings.enableUlisan,
@@ -983,6 +986,36 @@ function closeModal() {
 }
 modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeModal(); });
 
+/* ---------------------------- dialog konfirmasi hapus ---------------------------- */
+/* Dipakai SEBELUM setiap penghapusan permanen (kelas, siswa, catatan, dll.)
+   supaya salah klik tidak langsung menghapus data — sengaja dibuat sebagai
+   modal TERPISAH dari modal utama (openModal/closeModal) supaya bisa
+   ditumpuk di atas modal lain (mis. modal edit) tanpa merusak konten modal
+   yang sedang terbuka. Kembalikan Promise<boolean>: true = pengguna benar-
+   benar menekan tombol konfirmasi, false = batal (klik Batal/backdrop/Esc). */
+const confirmBackdrop = document.getElementById('confirmBackdrop');
+const confirmMessageEl = document.getElementById('confirmMessage');
+const confirmOkBtn = document.getElementById('confirmOkBtn');
+const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+let confirmResolve = null;
+
+function confirmDialog(message, okLabel) {
+  return new Promise(resolve => {
+    confirmMessageEl.textContent = message;
+    confirmOkBtn.textContent = okLabel || 'Ya, hapus permanen';
+    confirmBackdrop.classList.add('is-open');
+    confirmResolve = resolve;
+  });
+}
+function closeConfirmDialog(result) {
+  confirmBackdrop.classList.remove('is-open');
+  if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
+}
+confirmOkBtn.addEventListener('click', () => closeConfirmDialog(true));
+confirmCancelBtn.addEventListener('click', () => closeConfirmDialog(false));
+confirmBackdrop.addEventListener('click', e => { if (e.target === confirmBackdrop) closeConfirmDialog(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && confirmBackdrop.classList.contains('is-open')) closeConfirmDialog(false); });
+
 /* =========================================================================
    KELAS & SISWA
    ========================================================================= */
@@ -1085,8 +1118,9 @@ function renderKelasTable() {
   `;
   }).join('');
   tbody.querySelectorAll('[data-edit-kelas]').forEach(b => b.onclick = () => openKelasModal(classById(b.dataset.editKelas)));
-  tbody.querySelectorAll('[data-del-kelas]').forEach(b => b.onclick = () => {
-    if (!confirm('Hapus kelas ini beserta seluruh data siswa, absensi, dan nilainya?')) return;
+  tbody.querySelectorAll('[data-del-kelas]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus kelas ini beserta seluruh data siswa, absensi, dan nilainya secara permanen? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
     const id = b.dataset.delKelas;
     state.classes = state.classes.filter(c => c.id !== id);
     state.students = state.students.filter(s => s.classId !== id);
@@ -1177,8 +1211,9 @@ function renderSiswaTable() {
     </tr>
   `).join('');
   tbody.querySelectorAll('[data-edit-siswa]').forEach(b => b.onclick = () => openSiswaModal(studentById(b.dataset.editSiswa)));
-  tbody.querySelectorAll('[data-del-siswa]').forEach(b => b.onclick = () => {
-    if (!confirm('Hapus siswa ini beserta riwayat absensi, poin, dan nilainya?')) return;
+  tbody.querySelectorAll('[data-del-siswa]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus siswa ini beserta riwayat absensi, poin, dan nilainya secara permanen? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
     const id = b.dataset.delSiswa;
     state.students = state.students.filter(s => s.id !== id);
     state.attendance = state.attendance.filter(a => a.studentId !== id);
@@ -1484,10 +1519,11 @@ function renderNilaiChips() {
     });
   });
   wrap.querySelectorAll('[data-chip-del]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const name = btn.dataset.chipDel;
-      if (!confirm(`Hapus penilaian "${name}" beserta seluruh nilai siswa di dalamnya?`)) return;
+      const ok = await confirmDialog(`Hapus penilaian "${name}" beserta seluruh nilai siswa di dalamnya secara permanen? Tindakan ini tidak bisa dibatalkan.`);
+      if (!ok) return;
       state.grades = state.grades.filter(g => !(g.classId === classId && g.type === jenis && g.name === name));
       if (document.getElementById('nilaiNama').value.trim() === name) document.getElementById('nilaiNama').value = '';
       saveState(); renderNilaiChips(); renderNilaiInputTable(); renderNilaiRekap(); renderNilaiLengkapTable();
@@ -1852,7 +1888,9 @@ function renderPraktikumTable() {
       <td><button class="btn btn-line" data-del-prak="${p.id}" style="color:#E1547A">Hapus</button></td>
     </tr>
   `).join('') : '<tr><td colspan="5" class="empty">Belum ada catatan praktikum untuk kelas ini.</td></tr>';
-  tbody.querySelectorAll('[data-del-prak]').forEach(b => b.onclick = () => {
+  tbody.querySelectorAll('[data-del-prak]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus catatan praktikum ini secara permanen? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
     state.praktikum = state.praktikum.filter(p => p.id !== b.dataset.delPrak);
     saveState(); renderPraktikumTable();
   });
@@ -2001,7 +2039,7 @@ function fetchWithTimeout(url, options, timeoutMs) {
    Tidak pernah melempar exception — selalu mengembalikan
    { ok, url?, error? } di mana error adalah salah satu dari:
    'offline' | 'timeout' | 'network' (atau pesan dari server). */
-async function submitTeachingProofPhoto(fotoFile, kelas, tanggal) {
+async function submitTeachingProofPhoto(fotoFile, kelas, tanggal, folder) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return { ok: false, error: 'offline' };
   }
@@ -2018,7 +2056,7 @@ async function submitTeachingProofPhoto(fotoFile, kelas, tanggal) {
       body: JSON.stringify({
         type: 'uploadTeachingProofPhoto',
         fileName: compressed.name, mimeType: compressed.type, base64: dataUrl.split(',')[1],
-        kelas: kelas || '', tanggal: tanggal || ''
+        kelas: kelas || '', tanggal: tanggal || '', folder: folder || undefined
       })
     }, timeoutMs);
     const data = await res.json().catch(() => null);
@@ -2196,7 +2234,9 @@ function renderJurnalMengajarView() {
       </td>
     </tr>
   `).join('') : '<tr><td colspan="6" class="empty">Belum ada catatan mengajar untuk kelas ini.</td></tr>';
-  tbody.querySelectorAll('[data-del-jm]').forEach(b => b.onclick = () => {
+  tbody.querySelectorAll('[data-del-jm]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus catatan mengajar ini secara permanen (termasuk tautan foto buktinya)? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
     state.jurnalMengajar = state.jurnalMengajar.filter(j => j.id !== b.dataset.delJm);
     saveState(); renderJurnalMengajarView();
   });
@@ -2349,6 +2389,330 @@ function openJurnalMengajarEditModal(item) {
 }
 
 /* =========================================================================
+   JURNAL KEGIATAN GURU — catatan kegiatan guru di luar jam mengajar kelas
+   tertentu (mis. rapat, piket, workshop, bimbingan siswa, dsb.). Sengaja
+   TIDAK terikat ke satu kelas/tahun ajaran tertentu (beda dari Jurnal
+   Mengajar), jadi punya tanggal sendiri (bukan memakai tanggal aktif global)
+   dan daftar riwayatnya menampilkan SEMUA catatan. Pola unggah fotonya
+   (kamera/galeri, konversi HEIC, kompresi, percobaan ulang, dsb.) sengaja
+   dibuat identik dengan Jurnal Mengajar — memakai ulang fungsi yang sama
+   (isHeicFile, toUploadableImage, submitTeachingProofPhoto,
+   fotoUploadErrorMsg) supaya perilakunya konsisten, hanya foto disimpan di
+   folder Drive yang berbeda ("Buku Kelas - Bukti Kegiatan Guru").
+   ========================================================================= */
+
+const JKG_FOLDER = 'Buku Kelas - Bukti Kegiatan Guru';
+
+let jkgFotoFile = null;
+function setJkgFoto(file) {
+  jkgFotoFile = file || null;
+  const nameEl = document.getElementById('jkgFotoNama');
+  const hapusBtn = document.getElementById('jkgFotoHapusBtn');
+  const previewWrap = document.getElementById('jkgFotoPreviewWrap');
+  const previewImg = document.getElementById('jkgFotoPreview');
+  if (jkgFotoFile) {
+    if (nameEl) nameEl.textContent = `Dipilih: ${jkgFotoFile.name}`;
+    if (hapusBtn) hapusBtn.style.display = '';
+    if (previewWrap && previewImg) {
+      const reader = new FileReader();
+      reader.onload = () => { previewImg.src = reader.result; previewWrap.style.display = ''; };
+      reader.readAsDataURL(jkgFotoFile);
+    }
+  } else {
+    if (nameEl) nameEl.textContent = '';
+    if (hapusBtn) hapusBtn.style.display = 'none';
+    if (previewWrap) previewWrap.style.display = 'none';
+    if (previewImg) previewImg.src = '';
+  }
+}
+const jkgFotoKameraInput = document.getElementById('jkgFotoKamera');
+const jkgFotoGaleriInput = document.getElementById('jkgFotoGaleri');
+jkgFotoKameraInput && jkgFotoKameraInput.addEventListener('change', async () => {
+  const raw = jkgFotoKameraInput.files[0];
+  if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+  setJkgFoto(raw ? await toUploadableImage(raw) : null);
+  if (jkgFotoGaleriInput) jkgFotoGaleriInput.value = '';
+});
+jkgFotoGaleriInput && jkgFotoGaleriInput.addEventListener('change', async () => {
+  const raw = jkgFotoGaleriInput.files[0];
+  if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+  setJkgFoto(raw ? await toUploadableImage(raw) : null);
+  if (jkgFotoKameraInput) jkgFotoKameraInput.value = '';
+});
+document.getElementById('jkgFotoHapusBtn') && document.getElementById('jkgFotoHapusBtn').addEventListener('click', () => {
+  if (jkgFotoKameraInput) jkgFotoKameraInput.value = '';
+  if (jkgFotoGaleriInput) jkgFotoGaleriInput.value = '';
+  setJkgFoto(null);
+});
+
+document.getElementById('jkgTanggal') && (document.getElementById('jkgTanggal').value = todayStr());
+
+document.getElementById('saveJurnalKegiatanBtn') && document.getElementById('saveJurnalKegiatanBtn').addEventListener('click', async () => {
+  const tanggalInput = document.getElementById('jkgTanggal');
+  const date = (tanggalInput && tanggalInput.value) || todayStr();
+  const jamKe = document.getElementById('jkgJamKe').value.trim();
+  const kegiatan = document.getElementById('jkgKegiatan').value.trim();
+  if (!kegiatan) { toast('Isi rincian kegiatan terlebih dahulu'); return; }
+
+  const entry = {
+    id: uid(), date, jamKe,
+    kegiatan, catatan: document.getElementById('jkgCatatan').value.trim(),
+    fotoUrl: '', fotoFileName: ''
+  };
+
+  const fotoFile = jkgFotoFile;
+  const btn = document.getElementById('saveJurnalKegiatanBtn');
+
+  if (fotoFile) {
+    if (!state.settings.sheetsUrl) {
+      toast('Hubungkan ke Google Spreadsheet dulu (Pengaturan) supaya foto bisa diunggah ke Drive.');
+    } else {
+      btn.disabled = true;
+      toast('Mengunggah foto bukti kegiatan…');
+      const result = await submitTeachingProofPhoto(fotoFile, '', date, JKG_FOLDER);
+      if (result.ok) {
+        entry.fotoUrl = result.url;
+        entry.fotoFileName = fotoFile.name;
+        toast('Foto tersimpan di Google Drive & tercatat di Spreadsheet');
+      } else {
+        toast(fotoUploadErrorMsg(result.error, 'tambah'));
+      }
+      btn.disabled = false;
+    }
+  }
+
+  state.jurnalKegiatan.push(entry);
+  document.getElementById('jkgJamKe').value = '';
+  document.getElementById('jkgKegiatan').value = '';
+  document.getElementById('jkgCatatan').value = '';
+  if (jkgFotoKameraInput) jkgFotoKameraInput.value = '';
+  if (jkgFotoGaleriInput) jkgFotoGaleriInput.value = '';
+  setJkgFoto(null);
+  renderJurnalKegiatanView();
+
+  // Sinkron eksplisit (bukan cuma silent auto-sync) supaya guru langsung
+  // tahu kalau foto/catatannya gagal terkirim — sama seperti Jurnal Mengajar.
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  clearTimeout(autoSyncTimer);
+  updateSyncBadge();
+  if (state.settings.sheetsUrl) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast('Catatan kegiatan disimpan di perangkat. Sedang offline — akan otomatis terkirim ke Spreadsheet begitu koneksi tersedia.');
+    } else {
+      const synced = await syncToSheets(true);
+      toast(synced
+        ? 'Catatan kegiatan tersimpan & tercatat di Spreadsheet'
+        : 'Catatan tersimpan di perangkat, tapi GAGAL terkirim ke Spreadsheet (cek koneksi internet / URL Apps Script). Akan dicoba lagi otomatis.');
+    }
+  } else {
+    toast('Catatan kegiatan disimpan');
+  }
+});
+
+function renderJurnalKegiatanView() {
+  const tbody = document.querySelector('#jurnalKegiatanTable tbody');
+  if (!tbody) return;
+  const list = state.jurnalKegiatan.slice().sort((a, b) => b.date.localeCompare(a.date) || String(b.jamKe || '').localeCompare(String(a.jamKe || '')));
+  tbody.innerHTML = list.length ? list.map(j => `
+    <tr>
+      <td class="numcell">${escapeHtml(j.date)}</td>
+      <td class="numcell">${escapeHtml(j.jamKe || '—')}</td>
+      <td>${escapeHtml(j.kegiatan)}</td>
+      <td>${escapeHtml(j.catatan || '—')}</td>
+      <td>${j.fotoUrl ? `<a class="btn btn-line btn-sm" href="${j.fotoUrl}" target="_blank" rel="noopener">📷 Lihat foto</a>` : '—'}</td>
+      <td>
+        <button class="btn btn-line" data-edit-jkg="${j.id}">Edit</button>
+        <button class="btn btn-line" data-del-jkg="${j.id}" style="color:#E1547A">Hapus</button>
+      </td>
+    </tr>
+  `).join('') : '<tr><td colspan="6" class="empty">Belum ada catatan kegiatan guru.</td></tr>';
+  tbody.querySelectorAll('[data-del-jkg]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus catatan kegiatan ini secara permanen (termasuk tautan foto buktinya)? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
+    state.jurnalKegiatan = state.jurnalKegiatan.filter(j => j.id !== b.dataset.delJkg);
+    saveState(); renderJurnalKegiatanView();
+  });
+  tbody.querySelectorAll('[data-edit-jkg]').forEach(b => b.onclick = () => {
+    const item = state.jurnalKegiatan.find(j => j.id === b.dataset.editJkg);
+    if (item) openJurnalKegiatanEditModal(item);
+  });
+}
+
+/* Modal edit catatan kegiatan guru — sama persis polanya dengan modal edit
+   Jurnal Mengajar (ganti/hapus foto tanpa perlu hapus & buat ulang). */
+let mJkgFotoFile = null;
+let mJkgFotoRemoved = false;
+function openJurnalKegiatanEditModal(item) {
+  mJkgFotoFile = null;
+  mJkgFotoRemoved = false;
+  openModal(`
+    <h3>Edit catatan kegiatan</h3>
+    <div class="form-grid">
+      <label class="ctx-field"><span>Tanggal</span><input id="mJkgTanggal" type="date" value="${escapeHtml(item.date || '')}"></label>
+      <label class="ctx-field"><span>Jam ke</span><input id="mJkgJamKe" type="text" placeholder="Misal: 3–4" value="${escapeHtml(item.jamKe || '')}"></label>
+      <label class="ctx-field"><span>Rincian kegiatan</span><input id="mJkgKegiatan" type="text" value="${escapeHtml(item.kegiatan || '')}"></label>
+      <label class="ctx-field"><span>Catatan (opsional)</span><input id="mJkgCatatan" type="text" value="${escapeHtml(item.catatan || '')}"></label>
+    </div>
+    <div class="form-row">
+      <label class="btn btn-line file-btn">📷 Ambil foto (kamera)
+        <input type="file" id="mJkgFotoKamera" accept="image/*,.heic,.heif" capture="environment" hidden>
+      </label>
+      <label class="btn btn-line file-btn">🖼️ Pilih dari galeri
+        <input type="file" id="mJkgFotoGaleri" accept="image/*,.heic,.heif" hidden>
+      </label>
+      <button type="button" class="btn btn-line" id="mJkgFotoHapusBtn" style="${item.fotoUrl ? '' : 'display:none;'} color:#E1547A">Hapus foto</button>
+      <span class="hint" id="mJkgFotoNama" style="margin:0"></span>
+    </div>
+    <div id="mJkgFotoPreviewWrap" style="${item.fotoUrl ? '' : 'display:none;'} margin:2px 0 -2px">
+      ${item.fotoUrl ? `<a href="${item.fotoUrl}" target="_blank" rel="noopener"><img id="mJkgFotoPreview" src="${item.fotoUrl}" alt="Foto bukti kegiatan" style="max-width:160px; max-height:160px; border-radius:10px; border:1px solid var(--line); display:block; object-fit:cover"></a>` : `<img id="mJkgFotoPreview" alt="Pratinjau foto bukti kegiatan" style="max-width:160px; max-height:160px; border-radius:10px; border:1px solid var(--line); display:block; object-fit:cover">`}
+    </div>
+    <p class="hint" style="margin-top:-2px">Pilih foto baru untuk mengganti (unggah ulang ke Drive), atau kosongkan/hapus untuk menghilangkan foto.</p>
+    <div class="modal-actions">
+      <button class="btn btn-line" id="mCancel">Batal</button>
+      <button class="btn btn-primary" id="mSave">Simpan perubahan</button>
+    </div>
+  `, box => {
+    const nameEl = box.querySelector('#mJkgFotoNama');
+    const hapusBtn = box.querySelector('#mJkgFotoHapusBtn');
+    const previewWrap = box.querySelector('#mJkgFotoPreviewWrap');
+    const previewImg = box.querySelector('#mJkgFotoPreview');
+    const kameraInput = box.querySelector('#mJkgFotoKamera');
+    const galeriInput = box.querySelector('#mJkgFotoGaleri');
+
+    function setMJkgFoto(file) {
+      mJkgFotoFile = file || null;
+      mJkgFotoRemoved = false;
+      if (mJkgFotoFile) {
+        nameEl.textContent = `Dipilih: ${mJkgFotoFile.name}`;
+        hapusBtn.style.display = '';
+        const reader = new FileReader();
+        reader.onload = () => { previewImg.src = reader.result; previewWrap.style.display = ''; };
+        reader.readAsDataURL(mJkgFotoFile);
+      } else {
+        nameEl.textContent = '';
+        if (item.fotoUrl) {
+          hapusBtn.style.display = '';
+          previewImg.src = item.fotoUrl;
+          previewWrap.style.display = '';
+        } else {
+          hapusBtn.style.display = 'none';
+          previewWrap.style.display = 'none';
+        }
+      }
+    }
+
+    kameraInput.addEventListener('change', async () => {
+      const raw = kameraInput.files[0];
+      if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+      setMJkgFoto(raw ? await toUploadableImage(raw) : null);
+      galeriInput.value = '';
+    });
+    galeriInput.addEventListener('change', async () => {
+      const raw = galeriInput.files[0];
+      if (raw && isHeicFile(raw)) toast('Mengonversi foto HEIC…');
+      setMJkgFoto(raw ? await toUploadableImage(raw) : null);
+      kameraInput.value = '';
+    });
+    hapusBtn.addEventListener('click', () => {
+      kameraInput.value = ''; galeriInput.value = '';
+      mJkgFotoFile = null;
+      mJkgFotoRemoved = true;
+      nameEl.textContent = '';
+      hapusBtn.style.display = 'none';
+      previewWrap.style.display = 'none';
+      previewImg.src = '';
+    });
+
+    box.querySelector('#mCancel').onclick = closeModal;
+    box.querySelector('#mSave').onclick = async () => {
+      const kegiatan = box.querySelector('#mJkgKegiatan').value.trim();
+      if (!kegiatan) { toast('Isi rincian kegiatan'); return; }
+      const saveBtn = box.querySelector('#mSave');
+      const newDate = box.querySelector('#mJkgTanggal').value || item.date;
+
+      if (mJkgFotoFile) {
+        if (!state.settings.sheetsUrl) {
+          toast('Hubungkan ke Google Spreadsheet dulu (Pengaturan) supaya foto bisa diunggah ke Drive.');
+        } else {
+          saveBtn.disabled = true;
+          toast('Mengunggah foto bukti kegiatan…');
+          const result = await submitTeachingProofPhoto(mJkgFotoFile, '', newDate, JKG_FOLDER);
+          if (result.ok) {
+            item.fotoUrl = result.url;
+            item.fotoFileName = mJkgFotoFile.name;
+            toast('Foto baru tersimpan di Google Drive & tercatat di Spreadsheet');
+          } else {
+            toast(fotoUploadErrorMsg(result.error, 'edit'));
+          }
+          saveBtn.disabled = false;
+        }
+      } else if (mJkgFotoRemoved) {
+        item.fotoUrl = '';
+        item.fotoFileName = '';
+      }
+
+      item.date = newDate;
+      item.jamKe = box.querySelector('#mJkgJamKe').value.trim();
+      item.kegiatan = kegiatan;
+      item.catatan = box.querySelector('#mJkgCatatan').value.trim();
+      closeModal(); renderJurnalKegiatanView();
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      clearTimeout(autoSyncTimer);
+      updateSyncBadge();
+      if (state.settings.sheetsUrl) {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          toast('Catatan diperbarui di perangkat. Sedang offline — akan otomatis terkirim ke Spreadsheet begitu koneksi tersedia.');
+        } else {
+          const synced = await syncToSheets(true);
+          toast(synced
+            ? 'Catatan kegiatan diperbarui & tercatat di Spreadsheet'
+            : 'Catatan tersimpan di perangkat, tapi GAGAL terkirim ke Spreadsheet (cek koneksi internet / URL Apps Script). Akan dicoba lagi otomatis.');
+        }
+      } else {
+        toast('Catatan kegiatan diperbarui');
+      }
+    };
+  });
+}
+
+/* Rekap kegiatan guru (Excel/Word/PDF) — semua catatan (tidak terikat
+   kelas), diurutkan tanggal. Memakai ulang fungsi unduh yang sama dengan
+   rekap lain supaya perbaikan format PDF/Word juga berlaku di sini. */
+function jurnalKegiatanAoa() {
+  const header = ['Tanggal', 'Jam ke', 'Rincian Kegiatan', 'Catatan', 'Link Foto Bukti'];
+  const list = state.jurnalKegiatan.slice().sort((a, b) => a.date.localeCompare(b.date) || String(a.jamKe || '').localeCompare(String(b.jamKe || '')));
+  const body = list.map(j => [j.date, j.jamKe || '-', j.kegiatan || '-', j.catatan || '-', j.fotoUrl || '-']);
+  return [header, ...body];
+}
+function jurnalKegiatanAoaForPdf() {
+  const aoa = jurnalKegiatanAoa();
+  const header = aoa[0];
+  const body = aoa.slice(1).map(row => row.map((cell, i) => (i === header.length - 1 && cell && cell !== '-') ? 'Ada (lihat di Drive)' : cell));
+  return [header, ...body];
+}
+document.getElementById('downloadJurnalKegiatanRekapExcelBtn') && document.getElementById('downloadJurnalKegiatanRekapExcelBtn').addEventListener('click', () => {
+  const aoa = jurnalKegiatanAoa();
+  if (aoa.length <= 1) { toast('Belum ada catatan kegiatan'); return; }
+  downloadAoaExcel(aoa, 'Rekap', `rekap-jurnal-kegiatan-guru-${todayStr()}.xlsx`);
+  toast('Rekapan berhasil diunduh (Excel)');
+});
+document.getElementById('downloadJurnalKegiatanRekapWordBtn') && document.getElementById('downloadJurnalKegiatanRekapWordBtn').addEventListener('click', async () => {
+  const aoa = jurnalKegiatanAoa();
+  if (aoa.length <= 1) { toast('Belum ada catatan kegiatan'); return; }
+  const subtitle = periodeLabelFromDates(state.jurnalKegiatan.map(j => j.date));
+  await downloadAoaWord('Rekap Jurnal Kegiatan Guru', subtitle, aoa, `rekap-jurnal-kegiatan-guru-${todayStr()}.docx`);
+  toast('Rekapan berhasil diunduh (Word)');
+});
+document.getElementById('downloadJurnalKegiatanRekapPdfBtn') && document.getElementById('downloadJurnalKegiatanRekapPdfBtn').addEventListener('click', () => {
+  const aoa = jurnalKegiatanAoa();
+  if (aoa.length <= 1) { toast('Belum ada catatan kegiatan'); return; }
+  const subtitle = periodeLabelFromDates(state.jurnalKegiatan.map(j => j.date));
+  downloadAoaPdf('Rekap Jurnal Kegiatan Guru', subtitle, jurnalKegiatanAoaForPdf(), `rekap-jurnal-kegiatan-guru-${todayStr()}.pdf`, { landscape: true });
+  toast('Rekapan berhasil diunduh (PDF)');
+});
+
+/* =========================================================================
    REFLEKSI MENGAJAR — refleksi guru per kelas, ditulis setelah mengajar
    ========================================================================= */
 
@@ -2379,7 +2743,9 @@ function renderRefleksiView() {
       <td><button class="btn btn-line" data-del-ref="${r.id}" style="color:#E1547A">Hapus</button></td>
     </tr>
   `).join('') : '<tr><td colspan="3" class="empty">Belum ada refleksi untuk kelas ini.</td></tr>';
-  tbody.querySelectorAll('[data-del-ref]').forEach(b => b.onclick = () => {
+  tbody.querySelectorAll('[data-del-ref]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus refleksi ini secara permanen? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
     state.reflections = state.reflections.filter(r => r.id !== b.dataset.delRef);
     saveState(); renderRefleksiView();
   });
@@ -2445,7 +2811,9 @@ function renderJadwalView() {
       </td>
     </tr>`;
   }).join('') : '<tr><td colspan="5" class="empty">Belum ada jadwal. Tambahkan di atas agar Anda diingatkan.</td></tr>';
-  tbody.querySelectorAll('[data-del-jadwal]').forEach(b => b.onclick = () => {
+  tbody.querySelectorAll('[data-del-jadwal]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus jadwal ini secara permanen? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
     state.schedule = state.schedule.filter(j => j.id !== b.dataset.delJadwal);
     saveState(); renderJadwalView();
   });
@@ -2643,7 +3011,9 @@ function renderModulAjarView() {
     </tr>`;
   }).join('') : '<tr><td colspan="5" class="empty">Belum ada modul ajar. Unggah file di atas.</td></tr>';
 
-  tbody.querySelectorAll('[data-del-modul]').forEach(b => b.onclick = () => {
+  tbody.querySelectorAll('[data-del-modul]').forEach(b => b.onclick = async () => {
+    const ok = await confirmDialog('Hapus modul ajar ini secara permanen (tautan file di Drive tidak ikut terhapus)? Tindakan ini tidak bisa dibatalkan.');
+    if (!ok) return;
     state.modules = state.modules.filter(m => m.id !== b.dataset.delModul);
     saveState(); renderModulAjarView();
   });
@@ -2866,45 +3236,19 @@ function rekapAoa() {
 
 document.getElementById('exportExcelBtn').addEventListener('click', () => {
   if (!currentRekapRows.length) { toast('Tampilkan rekap terlebih dahulu'); return; }
-  const ws = XLSX.utils.aoa_to_sheet(rekapAoa());
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Rekap');
-  XLSX.writeFile(wb, `rekap-${classById(getCtx().classId)?.name || 'kelas'}-${rekapFrom.value}_${rekapTo.value}.xlsx`);
+  downloadAoaExcel(rekapAoa(), 'Rekap', `rekap-${safeFileNamePart(classById(getCtx().classId)?.name)}-${rekapFrom.value}_${rekapTo.value}.xlsx`);
 });
 
 document.getElementById('exportPdfBtn').addEventListener('click', () => {
   if (!currentRekapRows.length) { toast('Tampilkan rekap terlebih dahulu'); return; }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
   const kelas = classById(getCtx().classId)?.name || '';
-  doc.setFontSize(13); doc.text(`Rekap Kelas ${kelas}`, 14, 15);
-  doc.setFontSize(9); doc.text(`Periode: ${rekapFrom.value} s/d ${rekapTo.value}`, 14, 21);
-  const aoa = rekapAoa();
-  doc.autoTable({ head: [aoa[0]], body: aoa.slice(1), startY: 26, styles: { fontSize: 8 }, headStyles: { fillColor: [112, 64, 224] } });
-  doc.save(`rekap-${kelas}-${rekapFrom.value}_${rekapTo.value}.pdf`);
+  downloadAoaPdf(`Rekap Kelas ${kelas}`, `Periode: ${rekapFrom.value} s/d ${rekapTo.value}`, rekapAoa(), `rekap-${safeFileNamePart(kelas)}-${rekapFrom.value}_${rekapTo.value}.pdf`);
 });
 
-document.getElementById('exportWordBtn').addEventListener('click', () => {
+document.getElementById('exportWordBtn').addEventListener('click', async () => {
   if (!currentRekapRows.length) { toast('Tampilkan rekap terlebih dahulu'); return; }
   const kelas = classById(getCtx().classId)?.name || '';
-  const aoa = rekapAoa();
-  const tableHtml = `<table border="1" style="border-collapse:collapse;font-family:Calibri;font-size:12px">
-    <thead><tr>${aoa[0].map(h => `<th style="padding:4px;background:#7040E0;color:#fff">${h}</th>`).join('')}</tr></thead>
-    <tbody>${aoa.slice(1).map(row => `<tr>${row.map(c => `<td style="padding:4px">${c}</td>`).join('')}</tr>`).join('')}</tbody>
-  </table>`;
-  const html = `
-    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head><meta charset="utf-8"><title>Rekap</title></head>
-    <body>
-      <h2 style="font-family:Calibri">Rekap Kelas ${kelas}</h2>
-      <p style="font-family:Calibri;font-size:12px">Periode: ${rekapFrom.value} s/d ${rekapTo.value}</p>
-      ${tableHtml}
-    </body></html>`;
-  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `rekap-${kelas}-${rekapFrom.value}_${rekapTo.value}.doc`;
-  link.click();
+  await downloadAoaWord(`Rekap Kelas ${kelas}`, `Periode: ${rekapFrom.value} s/d ${rekapTo.value}`, rekapAoa(), `rekap-${safeFileNamePart(kelas)}-${rekapFrom.value}_${rekapTo.value}.docx`);
 });
 
 /* =========================================================================
@@ -2933,34 +3277,152 @@ function downloadAoaExcel(aoa, sheetName, filename) {
   XLSX.writeFile(wb, filename);
 }
 
-function downloadAoaPdf(title, subtitle, aoa, filename) {
+/* PERBAIKAN BUG "tulisan di PDF terpotong": sebelumnya jsPDF selalu memakai
+   ukuran potret (A4 tegak) apa pun jumlah kolomnya, dan tidak ada batas
+   lebar kolom eksplisit — tabel dengan banyak kolom (mis. rekap absensi 7
+   kolom) atau kolom berisi teks panjang tanpa spasi (mis. tautan foto Google
+   Drive di rekap Jurnal Mengajar) melebihi lebar halaman sehingga sebagian
+   teks di kolom kanan terpotong/tidak muncul. Perbaikannya:
+   1) Otomatis memakai orientasi LANSKAP kalau kolomnya banyak (>=5), supaya
+      ada lebih banyak ruang horizontal.
+   2) Margin & lebar tabel diatur eksplisit ('auto', menyesuaikan halaman).
+   3) Teks yang sangat panjang TANPA spasi (mis. URL) dipotong dengan "…" di
+      level data supaya tidak memaksa satu kolom melebihi lebar halaman —
+      lihat juga jurnalMengajarRekapAoaForPdf() yang sudah mengganti tautan
+      penuh dengan keterangan singkat sebelum sampai ke fungsi ini. */
+function downloadAoaPdf(title, subtitle, aoa, filename, opts) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
+  const numCols = (aoa[0] || []).length;
+  const landscape = (opts && typeof opts.landscape === 'boolean') ? opts.landscape : numCols >= 5;
+  const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
   doc.setFontSize(13); doc.text(title, 14, 15);
   let startY = 20;
   if (subtitle) { doc.setFontSize(9); doc.text(subtitle, 14, 21); startY = 26; }
-  doc.autoTable({ head: [aoa[0]], body: aoa.slice(1), startY, styles: { fontSize: 8, cellWidth: 'wrap' }, headStyles: { fillColor: [225, 46, 136] } });
+  doc.autoTable({
+    head: [aoa[0]],
+    body: aoa.slice(1),
+    startY,
+    margin: { left: 10, right: 10 },
+    tableWidth: 'auto',
+    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak', cellWidth: 'wrap', valign: 'top' },
+    headStyles: { fillColor: [225, 46, 136] },
+    didParseCell: (data) => {
+      // jaring pengaman: teks super panjang tanpa spasi (mis. tautan) tidak
+      // bisa dibungkus (wrap) ke baris baru, jadi dipotong supaya tidak
+      // memaksa kolom melebihi batas halaman dan membuat teks lain terpotong.
+      const raw = data.cell.raw == null ? '' : String(data.cell.raw);
+      if (raw.length > 55 && !/\s/.test(raw)) {
+        data.cell.text = [raw.slice(0, 40) + '…'];
+      }
+    }
+  });
   doc.save(filename);
 }
 
-function downloadAoaWord(title, subtitle, aoa, filename) {
-  const tableHtml = `<table border="1" style="border-collapse:collapse;font-family:Calibri;font-size:12px">
-    <thead><tr>${aoa[0].map(h => `<th style="padding:4px;background:#E1547A;color:#fff">${escapeHtml(String(h))}</th>`).join('')}</tr></thead>
-    <tbody>${aoa.slice(1).map(row => `<tr>${row.map(c => `<td style="padding:4px">${escapeHtml(String(c))}</td>`).join('')}</tr>`).join('')}</tbody>
-  </table>`;
-  const html = `
-    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head>
-    <body>
-      <h2 style="font-family:Calibri">${escapeHtml(title)}</h2>
-      ${subtitle ? `<p style="font-family:Calibri;font-size:12px">${escapeHtml(subtitle)}</p>` : ''}
-      ${tableHtml}
-    </body></html>`;
-  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+/* PERBAIKAN BUG "file Word tidak bisa dibuka / dianggap rusak": sebelumnya
+   fungsi ini membuat file HTML biasa lalu diberi NAMA berakhiran .doc (trik
+   lama "HTML mengaku Word"). Word versi desktop kadang masih mau membukanya
+   (dengan peringatan), tapi Word di HP (Android/iOS) dan aplikasi lain
+   seperti WPS Office menolaknya sebagai "file rusak" karena isinya memang
+   bukan format Word yang sesungguhnya. Sekarang fungsi ini membangun file
+   .docx ASLI (format ZIP/OOXML resmi Microsoft) memakai JSZip, sehingga bisa
+   dibuka normal di Word (desktop maupun HP), Google Docs, maupun WPS. */
+async function downloadAoaWord(title, subtitle, aoa, filename) {
+  const blob = await buildDocxBlob(title, subtitle, aoa);
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
+}
+
+function escapeXml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+}
+
+/* Membangun file .docx (OOXML) minimal tapi valid: judul, subjudul (opsional),
+   dan satu tabel data — cukup untuk kebutuhan rekapan, dan bisa dibuka di
+   Word/Google Docs/WPS mana pun tanpa peringatan "file rusak". Halaman
+   dibuat LANSKAP (A4) supaya tabel dengan banyak kolom tetap muat rapi. */
+async function buildDocxBlob(title, subtitle, aoa) {
+  const header = aoa[0] || [];
+  const rows = aoa.slice(1);
+  const PAGE_W = 16838, PAGE_H = 11906, MARGIN = 700; // twips, A4 lanskap
+  const usableWidth = PAGE_W - MARGIN * 2;
+  const colWidth = Math.floor(usableWidth / Math.max(1, header.length));
+  const gridCols = header.map(() => `<w:gridCol w:w="${colWidth}"/>`).join('');
+
+  function cellXml(text, isHeader) {
+    const runProps = isHeader ? '<w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="18"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>' : '<w:rPr><w:sz w:val="18"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>';
+    const shade = isHeader ? '<w:shd w:val="clear" w:color="auto" w:fill="E1547A"/>' : '';
+    const lines = String(text ?? '').split(/\r?\n/).map(line => `<w:p>${runProps}<w:r>${runProps}<w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`).join('');
+    return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/>${shade}</w:tcPr>${lines || `<w:p/>`}</w:tc>`;
+  }
+  function rowXml(cells, isHeader) {
+    return `<w:tr>${cells.map(c => cellXml(c, isHeader)).join('')}</w:tr>`;
+  }
+
+  const tableXml = `<w:tbl>
+    <w:tblPr>
+      <w:tblW w:w="${usableWidth}" w:type="dxa"/>
+      <w:tblBorders>
+        <w:top w:val="single" w:sz="4" w:color="D9D9D9"/><w:left w:val="single" w:sz="4" w:color="D9D9D9"/>
+        <w:bottom w:val="single" w:sz="4" w:color="D9D9D9"/><w:right w:val="single" w:sz="4" w:color="D9D9D9"/>
+        <w:insideH w:val="single" w:sz="4" w:color="D9D9D9"/><w:insideV w:val="single" w:sz="4" w:color="D9D9D9"/>
+      </w:tblBorders>
+    </w:tblPr>
+    <w:tblGrid>${gridCols}</w:tblGrid>
+    ${rowXml(header, true)}
+    ${rows.map(r => rowXml(header.map((_, i) => r[i]), false)).join('')}
+  </w:tbl>`;
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:rPr><w:b/><w:sz w:val="32"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="32"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t xml:space="preserve">${escapeXml(title)}</w:t></w:r></w:p>
+    ${subtitle ? `<w:p><w:pPr><w:rPr><w:sz w:val="20"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t xml:space="preserve">${escapeXml(subtitle)}</w:t></w:r></w:p>` : ''}
+    <w:p/>
+    ${tableXml}
+    <w:sectPr>
+      <w:pgSz w:w="${PAGE_W}" w:h="${PAGE_H}" w:orient="landscape"/>
+      <w:pgMar w:top="${MARGIN}" w:right="${MARGIN}" w:bottom="${MARGIN}" w:left="${MARGIN}" w:header="0" w:footer="0" w:gutter="0"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`;
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+
+  const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(title)}</dc:title>
+  <dc:creator>Buku Kelas IPA</dc:creator>
+</cp:coreProperties>`;
+
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
+  <Application>Buku Kelas IPA</Application>
+</Properties>`;
+
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', contentTypesXml);
+  zip.file('_rels/.rels', rootRelsXml);
+  zip.file('docProps/core.xml', coreXml);
+  zip.file('docProps/app.xml', appXml);
+  zip.file('word/document.xml', documentXml);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 }
 
 /* Kumpulan pembangun data (AOA = array-of-array) untuk tiap menu, dipakai
@@ -2987,6 +3449,18 @@ function jurnalMengajarRekapAoa(classId) {
   return [header, ...body];
 }
 
+/* Versi khusus untuk PDF: tautan Drive yang panjang (tanpa spasi) diganti
+   keterangan singkat, supaya tidak memaksa kolom melebihi lebar halaman dan
+   membuat teks di sebelahnya terpotong (lihat catatan di downloadAoaPdf).
+   Excel & Word tetap memakai tautan lengkap (jurnalMengajarRekapAoa di atas)
+   karena di sana tautan itu tetap berguna untuk diklik/disalin. */
+function jurnalMengajarRekapAoaForPdf(classId) {
+  const aoa = jurnalMengajarRekapAoa(classId);
+  const header = aoa[0];
+  const body = aoa.slice(1).map(row => row.map((cell, i) => (i === header.length - 1 && cell && cell !== '-') ? 'Ada (lihat di Drive)' : cell));
+  return [header, ...body];
+}
+
 function refleksiRekapAoa(classId) {
   const header = ['Tanggal', 'Refleksi'];
   const list = state.reflections.filter(r => r.classId === classId).sort((a, b) => a.date.localeCompare(b.date));
@@ -3003,9 +3477,10 @@ function praktikumRekapAoa(classId) {
 
 /* Wiring generik: satu set (Excel/Word/PDF) untuk satu menu, dengan validasi
    & pesan yang sama (pilih kelas dulu, tidak ada data, dsb.) supaya perilaku
-   keempat menu konsisten. */
+   keempat menu konsisten. `aoaFnPdf` opsional: kalau diisi, dipakai KHUSUS
+   untuk tombol PDF (mis. mengganti tautan panjang dengan teks singkat). */
 function wireRekapKelasButtons(opts) {
-  const { idExcel, idWord, idPdf, aoaFn, judul, filePrefix, dateSource } = opts;
+  const { idExcel, idWord, idPdf, aoaFn, aoaFnPdf, judul, filePrefix, dateSource, landscape } = opts;
   function context() {
     const { classId } = getCtx();
     if (!classId) { toast('Pilih kelas terlebih dahulu'); return null; }
@@ -3023,14 +3498,15 @@ function wireRekapKelasButtons(opts) {
     downloadAoaExcel(ctx.aoa, 'Rekap', `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.xlsx`);
     toast('Rekapan berhasil diunduh (Excel)');
   });
-  btnWord && btnWord.addEventListener('click', () => {
+  btnWord && btnWord.addEventListener('click', async () => {
     const ctx = context(); if (!ctx) return;
-    downloadAoaWord(`${judul} — Kelas ${ctx.kelas}`, ctx.subtitle, ctx.aoa, `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.doc`);
+    await downloadAoaWord(`${judul} — Kelas ${ctx.kelas}`, ctx.subtitle, ctx.aoa, `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.docx`);
     toast('Rekapan berhasil diunduh (Word)');
   });
   btnPdf && btnPdf.addEventListener('click', () => {
     const ctx = context(); if (!ctx) return;
-    downloadAoaPdf(`${judul} — Kelas ${ctx.kelas}`, ctx.subtitle, ctx.aoa, `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.pdf`);
+    const aoaPdf = aoaFnPdf ? aoaFnPdf(ctx.classId) : ctx.aoa;
+    downloadAoaPdf(`${judul} — Kelas ${ctx.kelas}`, ctx.subtitle, aoaPdf, `${filePrefix}-${safeFileNamePart(ctx.kelas)}-${todayStr()}.pdf`, { landscape });
     toast('Rekapan berhasil diunduh (PDF)');
   });
 }
@@ -3042,7 +3518,7 @@ wireRekapKelasButtons({
 });
 wireRekapKelasButtons({
   idExcel: 'downloadJurnalMengajarRekapExcelBtn', idWord: 'downloadJurnalMengajarRekapWordBtn', idPdf: 'downloadJurnalMengajarRekapPdfBtn',
-  aoaFn: jurnalMengajarRekapAoa, judul: 'Rekap Jurnal Mengajar', filePrefix: 'rekap-jurnal-mengajar',
+  aoaFn: jurnalMengajarRekapAoa, aoaFnPdf: jurnalMengajarRekapAoaForPdf, judul: 'Rekap Jurnal Mengajar', filePrefix: 'rekap-jurnal-mengajar',
   dateSource: classId => state.jurnalMengajar.filter(j => j.classId === classId).map(j => j.date)
 });
 wireRekapKelasButtons({
@@ -3127,10 +3603,11 @@ document.getElementById('restoreFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const data = JSON.parse(reader.result);
-      if (!confirm('Ini akan menimpa seluruh data saat ini dengan isi file cadangan. Lanjutkan?')) return;
+      const ok = await confirmDialog('Ini akan MENIMPA seluruh data saat ini dengan isi file cadangan secara permanen. Data yang ada sekarang tidak bisa dikembalikan lagi setelah ini. Lanjutkan?', 'Ya, timpa data sekarang');
+      if (!ok) { e.target.value = ''; return; }
       state = Object.assign(structuredClone(DEFAULT_STATE), data, { settings: Object.assign({}, DEFAULT_STATE.settings, data.settings || {}) });
       saveState(); refreshKelasOptions(); renderAll();
       toast('Data berhasil dipulihkan');
@@ -3140,9 +3617,9 @@ document.getElementById('restoreFile').addEventListener('change', (e) => {
   e.target.value = '';
 });
 
-document.getElementById('resetDataBtn').addEventListener('click', () => {
-  if (!confirm('Semua data (kelas, siswa, absensi, nilai) akan dihapus permanen dari peramban ini. Yakin?')) return;
-  if (!confirm('Konfirmasi sekali lagi: hapus semua data?')) return;
+document.getElementById('resetDataBtn').addEventListener('click', async () => {
+  const ok = await confirmDialog('Semua data (kelas, siswa, absensi, nilai, dan seluruh catatan lainnya) akan dihapus PERMANEN dari peramban ini dan tidak bisa dikembalikan lagi. Yakin ingin melanjutkan?', 'Ya, hapus semua data');
+  if (!ok) return;
   state = structuredClone(DEFAULT_STATE);
   saveState(); refreshKelasOptions(); renderAll();
   toast('Semua data telah dihapus');
@@ -3188,6 +3665,7 @@ async function syncToSheets(silent) {
     grades: state.grades.map(g => ({ ...g, kelas: classById(g.classId)?.name || '', siswa: studentById(g.studentId)?.name || '' })),
     praktikum: state.praktikum.map(p => ({ ...p, kelas: classById(p.classId)?.name || '' })),
     jurnalMengajar: state.jurnalMengajar.map(j => ({ ...j, kelas: classById(j.classId)?.name || '' })),
+    jurnalKegiatan: state.jurnalKegiatan,
     reflections: state.reflections.map(r => ({ ...r, kelas: classById(r.classId)?.name || '' })),
     schedule: state.schedule.map(j => ({ ...j, kelas: classById(j.classId)?.name || '' })),
     modules: state.modules.map(m => ({ ...m, kelas: classById(m.classId)?.name || '', content: (m.content || '').slice(0, 45000) })),
@@ -3265,6 +3743,7 @@ function applyCloudSnapshot(data) {
   state.grades = data.grades || [];
   state.praktikum = data.praktikum || [];
   state.jurnalMengajar = data.jurnalMengajar || [];
+  state.jurnalKegiatan = data.jurnalKegiatan || [];
   state.reflections = data.reflections || [];
   // Normalisasi jam mulai/selesai berjaga-jaga terhadap data lama yang
   // sempat tersimpan salah (lihat normalizeTimeStr di atas).
@@ -3308,6 +3787,7 @@ function renderAll() {
   renderNilaiLengkapTable();
   renderPraktikumTable();
   renderJurnalMengajarView();
+  renderJurnalKegiatanView();
   renderRefleksiView();
   renderJadwalView();
   renderModulAjarView();
