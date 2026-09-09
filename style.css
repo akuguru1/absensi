@@ -298,6 +298,9 @@ a.btn:link, a.btn:visited, a.btn:hover, a.btn:active{color:var(--ink); text-deco
 .btn:hover{border-color:var(--lilac); box-shadow:var(--shadow-sm);}
 .btn:active{transform:scale(.98);}
 .btn-primary{background:linear-gradient(135deg, var(--purple) 0%, var(--purple-dark) 100%); border-color:transparent; color:#fff; box-shadow:0 4px 14px rgba(157,0,255,.38);}
+.btn-danger{background:var(--red); border-color:var(--red); color:#fff;}
+.btn-danger:hover{filter:brightness(.94);}
+.modal-confirm{width:380px;}
 .btn-primary:hover{filter:brightness(1.05); box-shadow:0 6px 18px rgba(157,0,255,.48);}
 .btn-line{background:#fff;}
 .btn-sm{padding:5px 12px; font-size:12px;}
