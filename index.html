@@ -300,11 +300,13 @@
           <label class="ctx-field" style="flex:1.4"><span>Nama penilaian</span>
             <input type="text" id="nilaiNama" placeholder="Misal: Tugas 1">
           </label>
+          <button class="btn btn-line" id="downloadNilaiTemplateBtn">Unduh template import</button>
           <label class="btn btn-line file-btn">Import dari file
             <input type="file" id="importNilaiFile" accept=".xlsx,.xls,.csv" hidden>
           </label>
           <button class="btn btn-line" id="saveNilaiBtn">Simpan sekarang</button>
         </div>
+        <p class="hint" style="margin-top:-4px">Pilih dulu <strong>Jenis</strong> &amp; <strong>Nama penilaian</strong> di atas (misalnya Ulangan Harian → "UH 1", atau Tugas → "Tugas 3"), lalu klik <strong>"Unduh template import"</strong> — file Excel yang diunduh sudah berisi daftar nama &amp; NIS siswa kelas ini, tinggal isi kolom Nilai di laptop, lalu unggah lagi lewat "Import dari file".</p>
         <p class="hint" style="margin-top:-4px">Nilai yang Anda ketik <strong>otomatis tersimpan</strong> begitu berpindah kolom/kotak — tombol "Simpan sekarang" hanya untuk memaksa simpan semuanya segera. <span id="nilaiAutoSaveNote"></span></p>
         <div class="chip-row" id="nilaiChipRow"></div>
         <div class="tbl-wrap"><table class="tbl" id="nilaiInputTable">
