@@ -267,6 +267,20 @@
         <thead><tr id="keaktifanHeadRow"><th>Siswa</th></tr></thead>
         <tbody></tbody>
       </table></div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Rekap poin keaktifan per periode</h2>
+        </div>
+        <p class="hint" style="margin-top:-6px">Pilih rentang tanggal (misalnya dari awal sampai akhir 1 bab pembelajaran) untuk melihat & mengunduh rekap total poin keaktifan tiap siswa — per kategori dan totalnya — supaya mudah melihat siswa mana saja yang paling aktif selama periode tersebut.</p>
+        <div class="toolrow">
+          <label class="ctx-field"><span>Dari tanggal</span><input type="date" id="keaktifanRekapFrom"></label>
+          <label class="ctx-field"><span>Sampai tanggal</span><input type="date" id="keaktifanRekapTo"></label>
+          <button class="btn btn-line" id="downloadKeaktifanRekapExcelBtn">⬇ Excel</button>
+          <button class="btn btn-line" id="downloadKeaktifanRekapWordBtn">⬇ Word</button>
+          <button class="btn btn-line" id="downloadKeaktifanRekapPdfBtn">⬇ PDF</button>
+        </div>
+      </div>
     </section>
 
     <!-- NILAI -->
@@ -470,6 +484,9 @@
           <h2>Tulis refleksi</h2>
           <small id="refTanggalLabel"></small>
         </div>
+        <div class="form-row">
+          <label class="ctx-field"><span>Jam ke</span><input id="refJamKe" type="text" placeholder="Misal: 3–4"></label>
+        </div>
         <label class="ctx-field" style="width:100%">
           <span>Refleksi kelas ini</span>
           <textarea id="refKonten" rows="5" placeholder="Misal: Siswa antusias saat diskusi kelompok, namun sesi presentasi molor 10 menit. Minggu depan pakai timer per kelompok."></textarea>
@@ -491,7 +508,7 @@
         </div>
         <p class="hint" style="margin-top:-6px">Unduh rekap refleksi mengajar kelas ini, dari catatan pertama sampai terakhir.</p>
         <div class="tbl-wrap"><table class="tbl" id="refleksiTable">
-          <thead><tr><th style="width:120px">Tanggal</th><th>Refleksi</th><th></th></tr></thead>
+          <thead><tr><th style="width:110px">Tanggal</th><th style="width:90px">Jam ke</th><th style="width:140px">Kelas</th><th>Refleksi</th><th></th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
