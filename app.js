@@ -18,7 +18,7 @@ const DEFAULT_STATE = {
   praktikum: [],          // {id, classId, date, judul, alat, k3}
   jurnalMengajar: [],     // {id, classId, date, jamKe, materi, catatan, fotoUrl, fotoFileName} — fotoUrl = link Google Drive (bukti mengajar)
   jurnalKegiatan: [],     // {id, date, jamKe, kegiatan, catatan, fotoUrl, fotoFileName} — jurnal kegiatan guru (TIDAK terikat kelas tertentu, mis. rapat, piket, workshop, dsb.)
-  reflections: [],        // {id, classId, date, content} — refleksi guru per kelas setelah mengajar
+  reflections: [],        // {id, classId, date, jamKe, content} — refleksi guru per kelas setelah mengajar
   schedule: [],           // {id, classId, hari, jamKe, jamMulai, jamSelesai}
   modules: [],            // {id, classId, judul, mapel, sumber, fileName, driveUrl, content, tanggal}
   settings: {
@@ -1436,7 +1436,73 @@ function renderKeaktifanView() {
     row.querySelectorAll('.ptInput').forEach(inp => inp.addEventListener('input', updateTotal));
     updateTotal();
   });
+
+  defaultKeaktifanRekapRange();
 }
+
+/* ---------------------------- rekap poin keaktifan per periode (mis. 1 bab) ---------------------------- */
+/* Default rentang tanggal cuma diisi kalau kosong (mis. pertama kali dibuka),
+   supaya tidak menimpa rentang yang sudah dipilih pengguna setiap kali
+   tabel di atasnya dirender ulang. */
+function defaultKeaktifanRekapRange() {
+  const fromEl = document.getElementById('keaktifanRekapFrom');
+  const toEl = document.getElementById('keaktifanRekapTo');
+  if (!fromEl || !toEl) return;
+  const d = new Date(globalDate.value || todayStr());
+  const first = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  if (!fromEl.value) fromEl.value = first;
+  if (!toEl.value) toEl.value = todayStr();
+}
+
+/* Rekap total poin keaktifan tiap siswa (kelas aktif), dipecah per kategori
+   plus kolom Total, dalam rentang [from, to] — diurutkan dari total poin
+   TERTINGGI supaya langsung kelihatan siswa paling aktif selama periode itu
+   (mis. selama 1 bab pembelajaran). */
+function keaktifanRekapAoa(classId, from, to) {
+  const header = ['Siswa', ...state.activityCategories, 'Total Poin'];
+  const list = studentsOf(classId).slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  const body = list.map(s => {
+    const recs = state.activityPoints.filter(a => a.classId === classId && a.studentId === s.id && a.date >= from && a.date <= to);
+    const catTotals = state.activityCategories.map(cat => recs.filter(a => a.category === cat).reduce((sum, a) => sum + (Number(a.points) || 0), 0));
+    const total = catTotals.reduce((sum, n) => sum + n, 0);
+    return [s.name, ...catTotals, total];
+  });
+  body.sort((a, b) => b[b.length - 1] - a[a.length - 1]);
+  return [header, ...body];
+}
+
+function keaktifanRekapContext() {
+  const { classId } = getCtx();
+  if (!classId) { toast('Pilih kelas terlebih dahulu'); return null; }
+  const fromEl = document.getElementById('keaktifanRekapFrom');
+  const toEl = document.getElementById('keaktifanRekapTo');
+  const from = fromEl.value, to = toEl.value;
+  if (!from || !to) { toast('Pilih tanggal mulai dan tanggal selesai terlebih dahulu'); return null; }
+  if (from > to) { toast('Tanggal mulai harus sebelum atau sama dengan tanggal selesai'); return null; }
+  return { classId, from, to, kelas: classById(classId)?.name || '' };
+}
+
+document.getElementById('downloadKeaktifanRekapExcelBtn') && document.getElementById('downloadKeaktifanRekapExcelBtn').addEventListener('click', () => {
+  const ctx = keaktifanRekapContext(); if (!ctx) return;
+  const aoa = keaktifanRekapAoa(ctx.classId, ctx.from, ctx.to);
+  if (aoa.length <= 1) { toast('Belum ada siswa di kelas ini'); return; }
+  downloadAoaExcel(aoa, 'Rekap', `rekap-keaktifan-${safeFileNamePart(ctx.kelas)}-${ctx.from}-sd-${ctx.to}.xlsx`);
+  toast('Rekapan berhasil diunduh (Excel)');
+});
+document.getElementById('downloadKeaktifanRekapWordBtn') && document.getElementById('downloadKeaktifanRekapWordBtn').addEventListener('click', async () => {
+  const ctx = keaktifanRekapContext(); if (!ctx) return;
+  const aoa = keaktifanRekapAoa(ctx.classId, ctx.from, ctx.to);
+  if (aoa.length <= 1) { toast('Belum ada siswa di kelas ini'); return; }
+  await downloadAoaWord(`Rekap Keaktifan — Kelas ${ctx.kelas}`, `Periode ${fmtDateID(ctx.from)} – ${fmtDateID(ctx.to)}`, aoa, `rekap-keaktifan-${safeFileNamePart(ctx.kelas)}-${ctx.from}-sd-${ctx.to}.docx`);
+  toast('Rekapan berhasil diunduh (Word)');
+});
+document.getElementById('downloadKeaktifanRekapPdfBtn') && document.getElementById('downloadKeaktifanRekapPdfBtn').addEventListener('click', () => {
+  const ctx = keaktifanRekapContext(); if (!ctx) return;
+  const aoa = keaktifanRekapAoa(ctx.classId, ctx.from, ctx.to);
+  if (aoa.length <= 1) { toast('Belum ada siswa di kelas ini'); return; }
+  downloadAoaPdf(`Rekap Keaktifan — Kelas ${ctx.kelas}`, `Periode ${fmtDateID(ctx.from)} – ${fmtDateID(ctx.to)}`, aoa, `rekap-keaktifan-${safeFileNamePart(ctx.kelas)}-${ctx.from}-sd-${ctx.to}.pdf`, { landscape: state.activityCategories.length >= 4 });
+  toast('Rekapan berhasil diunduh (PDF)');
+});
 
 document.getElementById('saveKeaktifanBtn').addEventListener('click', () => {
   const { classId, date } = getCtx();
@@ -2721,8 +2787,10 @@ document.getElementById('saveRefleksiBtn') && document.getElementById('saveRefle
   const content = document.getElementById('refKonten').value.trim();
   if (!classId) { toast('Pilih kelas terlebih dahulu'); return; }
   if (!content) { toast('Isi refleksi terlebih dahulu'); return; }
-  state.reflections.push({ id: uid(), classId, date, content });
+  const jamKe = document.getElementById('refJamKe').value.trim();
+  state.reflections.push({ id: uid(), classId, date, jamKe, content });
   saveState(true); // immediate: langsung coba kirim ke Spreadsheet, tanpa menunggu jeda debounce
+  document.getElementById('refJamKe').value = '';
   document.getElementById('refKonten').value = '';
   toast('Refleksi tersimpan');
   renderRefleksiView();
@@ -2734,20 +2802,70 @@ function renderRefleksiView() {
   if (label) label.textContent = fmtDateID(date);
   const tbody = document.querySelector('#refleksiTable tbody');
   if (!tbody) return;
-  if (!classId) { tbody.innerHTML = '<tr><td colspan="3" class="empty">Pilih kelas di atas terlebih dahulu.</td></tr>'; return; }
+  if (!classId) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Pilih kelas di atas terlebih dahulu.</td></tr>'; return; }
   const list = state.reflections.filter(r => r.classId === classId).sort((a, b) => b.date.localeCompare(a.date));
   tbody.innerHTML = list.length ? list.map(r => `
     <tr>
       <td class="numcell">${escapeHtml(r.date)}</td>
+      <td class="numcell">${escapeHtml(r.jamKe || '—')}</td>
+      <td>${escapeHtml(classById(r.classId)?.name || '—')}</td>
       <td style="white-space:pre-wrap">${escapeHtml(r.content)}</td>
-      <td><button class="btn btn-line" data-del-ref="${r.id}" style="color:#E1547A">Hapus</button></td>
+      <td>
+        <button class="btn btn-line" data-edit-ref="${r.id}">Edit</button>
+        <button class="btn btn-line" data-del-ref="${r.id}" style="color:#E1547A">Hapus</button>
+      </td>
     </tr>
-  `).join('') : '<tr><td colspan="3" class="empty">Belum ada refleksi untuk kelas ini.</td></tr>';
+  `).join('') : '<tr><td colspan="5" class="empty">Belum ada refleksi untuk kelas ini.</td></tr>';
+  tbody.querySelectorAll('[data-edit-ref]').forEach(b => b.onclick = () => {
+    const item = state.reflections.find(r => r.id === b.dataset.editRef);
+    if (item) openRefleksiEditModal(item);
+  });
   tbody.querySelectorAll('[data-del-ref]').forEach(b => b.onclick = async () => {
     const ok = await confirmDialog('Hapus refleksi ini secara permanen? Tindakan ini tidak bisa dibatalkan.');
     if (!ok) return;
     state.reflections = state.reflections.filter(r => r.id !== b.dataset.delRef);
     saveState(); renderRefleksiView();
+  });
+}
+
+/* Modal edit refleksi — bisa mengubah tanggal, jam ke, kelas (kalau salah
+   pilih kelas saat menulis), dan isi refleksinya. */
+function openRefleksiEditModal(item) {
+  let kelasList = classesForYearFilter();
+  if (!kelasList.some(c => c.id === item.classId)) {
+    const cur = classById(item.classId);
+    if (cur) kelasList = [cur, ...kelasList];
+  }
+  const kelasOpts = kelasList.map(c => `<option value="${c.id}" ${item.classId === c.id ? 'selected' : ''}>${escapeHtml(c.name)}${c.year ? ' — ' + escapeHtml(c.year) : ''}</option>`).join('');
+  openModal(`
+    <h3>Edit refleksi</h3>
+    <div class="form-grid">
+      <label class="ctx-field"><span>Tanggal</span><input id="mRefTanggal" type="date" value="${escapeHtml(item.date || '')}"></label>
+      <label class="ctx-field"><span>Jam ke</span><input id="mRefJamKe" type="text" placeholder="Misal: 3–4" value="${escapeHtml(item.jamKe || '')}"></label>
+      <label class="ctx-field"><span>Kelas</span><select id="mRefKelas">${kelasOpts || '<option value="">Tidak ada kelas</option>'}</select></label>
+    </div>
+    <label class="ctx-field" style="width:100%">
+      <span>Refleksi</span>
+      <textarea id="mRefKonten" rows="5">${escapeHtml(item.content || '')}</textarea>
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-line" id="mCancel">Batal</button>
+      <button class="btn btn-primary" id="mSave">Simpan perubahan</button>
+    </div>
+  `, box => {
+    box.querySelector('#mCancel').onclick = closeModal;
+    box.querySelector('#mSave').onclick = () => {
+      const content = box.querySelector('#mRefKonten').value.trim();
+      const classId = box.querySelector('#mRefKelas').value;
+      if (!content) { toast('Isi refleksi tidak boleh kosong'); return; }
+      if (!classId) { toast('Pilih kelas'); return; }
+      item.date = box.querySelector('#mRefTanggal').value || item.date;
+      item.jamKe = box.querySelector('#mRefJamKe').value.trim();
+      item.classId = classId;
+      item.content = content;
+      saveState(true); closeModal(); renderAll();
+      toast('Refleksi diperbarui');
+    };
   });
 }
 
@@ -3462,9 +3580,9 @@ function jurnalMengajarRekapAoaForPdf(classId) {
 }
 
 function refleksiRekapAoa(classId) {
-  const header = ['Tanggal', 'Refleksi'];
+  const header = ['Tanggal', 'Jam ke', 'Kelas', 'Refleksi'];
   const list = state.reflections.filter(r => r.classId === classId).sort((a, b) => a.date.localeCompare(b.date));
-  const body = list.map(r => [r.date, r.content || '-']);
+  const body = list.map(r => [r.date, r.jamKe || '-', classById(r.classId)?.name || '-', r.content || '-']);
   return [header, ...body];
 }
 
