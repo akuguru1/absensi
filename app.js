@@ -1706,6 +1706,46 @@ document.getElementById('saveNilaiBtn').addEventListener('click', () => {
 });
 
 
+/* Template import nilai — prefill nama & NIS siswa kelas aktif, plus nilai
+   yang sudah ada (kalau sudah pernah diisi), supaya guru tinggal isi/koreksi
+   kolom Nilai di laptop lalu unggah lagi lewat "Import dari file". Sheet
+   kedua ("Petunjuk") cuma berisi info konteks (kelas/jenis/nama penilaian)
+   — TIDAK dibaca saat import (import cuma baca sheet pertama), jadi aman
+   ditambahkan tanpa mengganggu format yang sudah dikenali importer. */
+document.getElementById('downloadNilaiTemplateBtn').addEventListener('click', () => {
+  const { classId } = getCtx();
+  const jenis = document.getElementById('nilaiJenis').value;
+  const nama = document.getElementById('nilaiNama').value.trim();
+  if (!classId) { toast('Pilih kelas terlebih dahulu'); return; }
+  if (!nama) { toast('Isi/pilih nama penilaian terlebih dahulu (misal: Tugas 1, UH 1, UTS)'); return; }
+
+  const list = studentsOf(classId);
+  if (!list.length) { toast('Kelas ini belum punya siswa'); return; }
+
+  const rows = list.map(s => {
+    const existing = state.grades.find(g => g.classId === classId && g.studentId === s.id && g.type === jenis && g.name === nama);
+    return [s.name, s.nis || '', existing ? existing.score : ''];
+  });
+  const wsData = XLSX.utils.aoa_to_sheet([['Nama', 'NIS', 'Nilai'], ...rows]);
+  const wsInfo = XLSX.utils.aoa_to_sheet([
+    ['Template Import Nilai'],
+    ['Kelas', classById(classId)?.name || '-'],
+    ['Jenis penilaian', jenisLabel(jenis)],
+    ['Nama penilaian', nama],
+    [''],
+    ['Petunjuk:'],
+    ['1. Isi/koreksi kolom "Nilai" (0-100) di sheet "Nilai".'],
+    ['2. JANGAN mengubah urutan baris atau nama kolom.'],
+    ['3. Simpan file, lalu unggah lewat tombol "Import dari file" di menu Nilai (pastikan Jenis & Nama penilaian di atas masih sama seperti saat template ini diunduh).'],
+    ['4. Baris dengan kolom Nilai kosong akan dilewati (tidak menghapus nilai yang sudah ada).']
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsData, 'Nilai');
+  XLSX.utils.book_append_sheet(wb, wsInfo, 'Petunjuk');
+  XLSX.writeFile(wb, `template-import-nilai-${safeFileNamePart(classById(classId)?.name || 'kelas')}-${safeFileNamePart(nama)}.xlsx`);
+  toast('Template berhasil diunduh');
+});
+
 document.getElementById('importNilaiFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -1722,22 +1762,26 @@ document.getElementById('importNilaiFile').addEventListener('change', async (e) 
     const idxNilai = header.findIndex(h => h.includes('nilai') || h.includes('skor') || h.includes('score'));
     if (idxNilai === -1 || (idxNama === -1 && idxNis === -1)) { toast('File harus punya kolom Nama/NIS dan Nilai'); e.target.value = ''; return; }
 
-    let matched = 0, unmatched = 0;
+    let matched = 0, unmatched = 0, skipped = 0;
     rows.slice(1).forEach(r => {
       const rowName = idxNama > -1 ? String(r[idxNama] || '').trim().toLowerCase() : '';
       const rowNis = idxNis > -1 ? String(r[idxNis] || '').trim() : '';
+      if (!rowName && !rowNis) return; // baris kosong, lewati diam-diam
       const student = studentsOf(classId).find(s =>
         (rowNis && s.nis && s.nis === rowNis) || (rowName && s.name.toLowerCase() === rowName)
       );
       if (!student) { unmatched++; return; }
-      const score = Math.max(0, Math.min(100, Number(r[idxNilai]) || 0));
+      const rawNilai = r[idxNilai];
+      if (rawNilai === '' || rawNilai === null || rawNilai === undefined) { skipped++; return; } // kolom Nilai kosong: lewati, JANGAN timpa nilai yang sudah ada
+      const score = Math.max(0, Math.min(100, Number(rawNilai) || 0));
       let rec = state.grades.find(g => g.classId === classId && g.studentId === student.id && g.type === jenis && g.name === nama);
       if (rec) rec.score = score;
       else state.grades.push({ id: uid(), classId, studentId: student.id, type: jenis, name: nama, score, date: todayStr() });
       matched++;
     });
     saveState(); renderAll();
-    toast(`Import selesai: ${matched} cocok, ${unmatched} tidak ditemukan namanya di kelas ini`);
+    const skippedMsg = skipped ? `, ${skipped} dilewati (nilai kosong)` : '';
+    toast(`Import selesai: ${matched} cocok${skippedMsg}, ${unmatched} tidak ditemukan namanya di kelas ini`);
   } catch (err) {
     console.error(err);
     toast('Gagal membaca file nilai');
