@@ -44,6 +44,8 @@ function doPost(e) {
     writeSheet(ss, 'Nilai', data.grades, ['date', 'kelas', 'siswa', 'type', 'name', 'score', 'id', 'classId', 'studentId']);
     writeSheet(ss, 'Praktikum', data.praktikum, ['date', 'kelas', 'judul', 'alat', 'k3', 'id', 'classId']);
     writeSheet(ss, 'Jurnal Mengajar', data.jurnalMengajar, ['date', 'kelas', 'jamKe', 'materi', 'catatan', 'fotoUrl', 'fotoFileName', 'id', 'classId']);
+    writeSheet(ss, 'Jurnal Kegiatan Guru', data.jurnalKegiatan, ['date', 'jamKe', 'kegiatan', 'catatan', 'fotoUrl', 'fotoFileName', 'id']);
+    writeSheet(ss, 'Refleksi Guru', data.reflections, ['date', 'kelas', 'jamKe', 'content', 'id', 'classId']);
     writeSheet(ss, 'Jadwal Pelajaran', data.schedule, ['hari', 'kelas', 'jamKe', 'jamMulai', 'jamSelesai', 'id', 'classId']);
     writeSheet(ss, 'Modul Ajar', data.modules, ['tanggal', 'kelas', 'judul', 'mapel', 'sumber', 'fileName', 'driveUrl', 'content', 'id', 'classId']);
     writePengaturan(ss, data.pengaturan);
@@ -79,19 +81,22 @@ function uploadModuleFile(data) {
   }
 }
 
-/* Menyimpan foto bukti mengajar (dikirim sebagai base64) ke folder Google
-   Drive "Buku Kelas - Bukti Mengajar" di akun Gmail pemilik Spreadsheet,
-   lalu mengembalikan URL foto tersebut. Nama file diberi awalan tanggal &
-   nama kelas supaya mudah ditelusuri langsung dari Drive. */
+/* Menyimpan foto bukti (mengajar ATAU kegiatan guru, tergantung `data.folder`)
+   yang dikirim sebagai base64, ke folder Google Drive di akun Gmail pemilik
+   Spreadsheet, lalu mengembalikan URL foto tersebut. `data.folder` opsional —
+   kalau tidak diisi, dipakai folder default "Buku Kelas - Bukti Mengajar"
+   (supaya panggilan lama dari Jurnal Mengajar tetap berjalan tanpa perubahan).
+   Nama file diberi awalan tanggal & nama kelas (kalau ada) supaya mudah
+   ditelusuri langsung dari Drive. */
 function uploadTeachingProofPhoto(data) {
   try {
-    const folderName = 'Buku Kelas - Bukti Mengajar';
+    const folderName = data.folder || 'Buku Kelas - Bukti Mengajar';
     const folders = DriveApp.getFoldersByName(folderName);
     const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
     const bytes = Utilities.base64Decode(data.base64);
-    const safeKelas = String(data.kelas || 'Kelas').replace(/[\\/:*?"<>|]/g, '-');
+    const safeKelas = data.kelas ? String(data.kelas).replace(/[\\/:*?"<>|]/g, '-') : '';
     const safeTanggal = String(data.tanggal || '');
-    const namaFile = [safeTanggal, safeKelas, data.fileName || 'bukti-mengajar.jpg'].filter(Boolean).join(' - ');
+    const namaFile = [safeTanggal, safeKelas, data.fileName || 'bukti.jpg'].filter(Boolean).join(' - ');
     const blob = Utilities.newBlob(bytes, data.mimeType || 'image/jpeg', namaFile);
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -116,6 +121,8 @@ function doGet(e) {
         grades: readSheet(ss, 'Nilai', ['id', 'classId', 'studentId', 'type', 'name', 'score', 'date']),
         praktikum: readSheet(ss, 'Praktikum', ['id', 'classId', 'date', 'judul', 'alat', 'k3']),
         jurnalMengajar: readSheet(ss, 'Jurnal Mengajar', ['id', 'classId', 'date', 'jamKe', 'materi', 'catatan', 'fotoUrl', 'fotoFileName']),
+        jurnalKegiatan: readSheet(ss, 'Jurnal Kegiatan Guru', ['id', 'date', 'jamKe', 'kegiatan', 'catatan', 'fotoUrl', 'fotoFileName']),
+        reflections: readSheet(ss, 'Refleksi Guru', ['id', 'classId', 'date', 'jamKe', 'content']),
         schedule: readSheet(ss, 'Jadwal Pelajaran', ['id', 'classId', 'hari', 'jamKe', 'jamMulai', 'jamSelesai']),
         modules: readSheet(ss, 'Modul Ajar', ['id', 'classId', 'judul', 'mapel', 'sumber', 'fileName', 'driveUrl', 'content', 'tanggal']),
         pengaturan: readPengaturan(ss)
@@ -138,15 +145,44 @@ function getOrCreateSheet(ss, name) {
   return sheet;
 }
 
+/* Kolom-kolom yang berisi JAM (bukan tanggal), mis. "08:30". Dipakai di dua
+   tempat: writeSheet() (memaksa kolom ini berformat TEKS supaya Google Sheets
+   tidak otomatis mengubahnya jadi nilai Date/waktu dengan tanggal epoch
+   "1899-12-30"), dan readSheet() (memformat balik nilai Date lama, kalau ada,
+   sebagai jam 'HH:mm', bukan tanggal). Lihat catatan lengkap di readSheet(). */
+var TIME_ONLY_COLUMNS = ['jamMulai', 'jamSelesai'];
+
+/* Kolom "jam ke" (mis. "1-2", "3-4", "5-6") — BUKAN jam dan BUKAN tanggal,
+   tapi teksnya berbentuk "angka-angka" sehingga Google Sheets salah
+   mengiranya sebagai tanggal (mis. "1-2" dianggap 1 Februari, lalu tampil
+   sebagai "2026-02-01"; "5-6" dianggap 5 Juni, tampil sebagai "2026-06-05").
+   Itulah sebab tampilan Jam ke di Riwayat Mengajar & Jadwal Pelajaran
+   menunjukkan tanggal, bukan "jam ke 1-2"/"3-4". Sama seperti
+   TIME_ONLY_COLUMNS, kolom ini dipaksa TEKS saat ditulis, dan kalau sudah
+   terlanjur tersimpan sebagai Date, dibaca balik sebagai 'd-M' supaya nilai
+   aslinya ("1-2", "5-6", dst.) pulih otomatis. */
+var DAY_MONTH_TEXT_COLUMNS = ['jamKe'];
+
 function writeSheet(ss, name, rows, columns) {
   const sheet = getOrCreateSheet(ss, name);
   sheet.clear();
+  sheet.clearFormats();
   if (!rows || !rows.length) {
     sheet.getRange(1, 1, 1, columns.length).setValues([columns]);
     return;
   }
   const header = columns;
   const body = rows.map(r => columns.map(c => (r[c] !== undefined && r[c] !== null) ? r[c] : ''));
+  // PENTING (perbaikan bug "1899-12-30"): set format kolom jam ke TEKS ("@")
+  // SEBELUM nilai ditulis. Kalau tidak, Google Sheets akan otomatis mendeteksi
+  // string seperti "08:30" sebagai nilai waktu dan menyimpannya sebagai objek
+  // Date bertanggal epoch 1899-12-30 — itulah yang membuat tampilan Jadwal
+  // Pelajaran sebelumnya menunjukkan "1899-12-30 - 1899-12-30" alih-alih jam
+  // yang sesungguhnya diinput.
+  TIME_ONLY_COLUMNS.concat(DAY_MONTH_TEXT_COLUMNS).forEach(colName => {
+    const colIdx = columns.indexOf(colName);
+    if (colIdx !== -1) sheet.getRange(2, colIdx + 1, body.length, 1).setNumberFormat('@');
+  });
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
   sheet.getRange(2, 1, body.length, header.length).setValues(body);
   sheet.setFrozenRows(1);
@@ -156,6 +192,15 @@ function writeSheet(ss, name, rows, columns) {
    yang namanya ada di `keys` (dicocokkan lewat baris header), berapa pun
    urutan kolomnya di sheet. Kolom tampilan seperti "kelas"/"siswa" otomatis
    diabaikan kalau tidak diminta di `keys`. */
+/* PENTING (perbaikan bug "1899-12-30"): kalau ada sel jamMulai/jamSelesai
+   LAMA yang sempat terlanjur tersimpan sebagai objek Date (dari sebelum
+   writeSheet() dipaksa memakai format teks di atas), sel semacam itu akan
+   punya bagian TANGGAL epoch "30 Desember 1899" — kebiasaan Sheets/Excel
+   untuk nilai yang murni berupa jam, tanpa tanggal. readSheet() sebelumnya
+   memformat SEMUA nilai Date dengan format tanggal 'yyyy-MM-dd', sehingga
+   yang tampil hanya "1899-12-30" dan jam sesungguhnya (mis. "08:30") hilang.
+   Perbaikannya: kolom yang memang berisi JAM diformat sebagai 'HH:mm',
+   kolom tanggal biasa (date/tanggal) tetap 'yyyy-MM-dd'. */
 function readSheet(ss, sheetName, keys) {
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() < 2) return [];
@@ -172,7 +217,17 @@ function readSheet(ss, sheetName, keys) {
         let v = row[idx[k]];
         if (k === 'score' || k === 'points') v = Number(v) || 0;
         else if (v === null || v === undefined) v = '';
-        else if (v instanceof Date) v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        else if (v instanceof Date) {
+          if (TIME_ONLY_COLUMNS.indexOf(k) !== -1) {
+            v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
+          } else if (DAY_MONTH_TEXT_COLUMNS.indexOf(k) !== -1) {
+            // Pulihkan nilai "jam ke" lama yang terlanjur disalahartikan
+            // sebagai tanggal (lihat catatan DAY_MONTH_TEXT_COLUMNS di atas).
+            v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'd-M');
+          } else {
+            v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+          }
+        }
         obj[k] = v;
       });
       return obj;
