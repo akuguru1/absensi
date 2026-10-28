@@ -736,7 +736,7 @@ function scheduleAutoSync(immediate) {
 }
 
 async function attemptAutoSync() {
-  if (!state.settings.sheetsUrl) return;
+  if (!state.settings.sheetsUrl || !canSync()) return;
   if (!hasUnsyncedChanges()) { updateSyncBadge(); return; }
   if (typeof navigator !== 'undefined' && navigator.onLine === false) { updateSyncBadge(); return; }
   await syncToSheets(true);
@@ -2164,13 +2164,14 @@ async function submitTeachingProofPhoto(fotoFile, kelas, tanggal, folder) {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        type: 'uploadTeachingProofPhoto',
+        type: 'uploadTeachingProofPhoto', token: authToken(),
         fileName: compressed.name, mimeType: compressed.type, base64: dataUrl.split(',')[1],
         kelas: kelas || '', tanggal: tanggal || '', folder: folder || undefined
       })
     }, timeoutMs);
     const data = await res.json().catch(() => null);
     if (data && data.ok && data.url) return { ok: true, url: data.url };
+    if (data && data.error === 'unauthorized') handleUnauthorized();
     return { ok: false, error: (data && data.error) || 'invalid-response' };
   };
   let lastErr = null;
@@ -2203,6 +2204,7 @@ async function submitTeachingProofPhoto(fotoFile, kelas, tanggal, folder) {
    folder tidak bisa dibuat, dsb.) langsung terlihat oleh guru/admin. */
 function fotoUploadErrorMsg(error, konteks) {
   const sisa = konteks === 'edit' ? 'Foto lama tetap dipakai.' : 'Catatan tetap disimpan tanpa foto; unggah ulang lewat tombol Edit nanti.';
+  if (error === 'unauthorized') return `Sesi login berakhir — silakan masuk lagi, lalu unggah ulang fotonya. ${sisa}`;
   if (error === 'offline') return `Sedang offline — foto tidak bisa diunggah sekarang. ${sisa}`;
   if (error === 'timeout') return `Unggah foto memakan waktu terlalu lama (koneksi lambat/tidak stabil). ${sisa}`;
   if (error === 'network') return `Gagal mengunggah foto (koneksi terputus atau URL Apps Script tidak bisa dihubungi — cek juga apakah ada masalah CORS/izin akses). ${sisa}`;
@@ -3125,9 +3127,10 @@ document.getElementById('uploadModulBtn') && document.getElementById('uploadModu
       const res = await fetchWithTimeout(state.settings.sheetsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ type: 'uploadModuleFile', fileName: file.name, mimeType: file.type, base64: dataUrl.split(',')[1], judul })
+        body: JSON.stringify({ type: 'uploadModuleFile', token: authToken(), fileName: file.name, mimeType: file.type, base64: dataUrl.split(',')[1], judul })
       }, 60000);
       const data = await res.json().catch(() => null);
+      if (data && data.error === 'unauthorized') handleUnauthorized();
       if (data && data.ok && data.url) {
         item.driveUrl = data.url;
         toast('Modul tersimpan ke Google Drive & tercatat di Spreadsheet');
@@ -3708,6 +3711,7 @@ function renderPengaturan() {
   updateBobotHint();
   document.getElementById('sheetsUrl').value = state.settings.sheetsUrl || '';
   renderGuruProfile();
+  if (typeof renderAkunPanel === 'function') renderAkunPanel();
 }
 
 function updateBobotHint() {
@@ -3788,6 +3792,242 @@ document.getElementById('resetDataBtn').addEventListener('click', async () => {
 });
 
 /* =========================================================================
+   AKUN ADMIN & LOGIN
+   -------------------------------------------------------------------------
+   Login diverifikasi oleh SERVER (google-apps-script.gs), bukan di peramban.
+   Server memberi token sesi; token disimpan di localStorage (kunci terpisah
+   dari data, jadi tidak hilang saat data dipulihkan/dihapus) dan dikirim di
+   setiap sinkron. Tanpa token yang sah, server menolak membaca/menulis data.
+   ========================================================================= */
+
+const AUTH_KEY = 'bukukelas_auth_v1';
+const SERVER_URL_KEY = 'bukukelas_server_url_v1';
+const LEGACY_KEY = 'bukukelas_legacy_nologin_v1';   // mode lama tanpa login (skrip server belum diperbarui)
+
+function el(id) { return document.getElementById(id); }
+function loadAuth() {
+  try {
+    const a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+    if (a && a.token && Number(a.exp) > Date.now()) return a;
+  } catch (e) {}
+  return null;
+}
+function saveAuth(a) { try { localStorage.setItem(AUTH_KEY, JSON.stringify(a)); } catch (e) {} }
+function clearAuth() { try { localStorage.removeItem(AUTH_KEY); } catch (e) {} }
+function authToken() { const a = loadAuth(); return a ? a.token : ''; }
+function isLegacyMode() { return localStorage.getItem(LEGACY_KEY) === '1'; }
+function canSync() { return !!authToken() || isLegacyMode(); }
+function presetServerUrl() { return String((window.BUKU_KELAS_CONFIG && window.BUKU_KELAS_CONFIG.scriptUrl) || '').trim(); }
+function knownServerUrl() {
+  return presetServerUrl() || localStorage.getItem(SERVER_URL_KEY) || state.settings.sheetsUrl || '';
+}
+
+function lockApp(message) {
+  document.body.classList.add('locked');
+  el('loginError').textContent = message || '';
+  el('loginPass').value = '';
+  const url = knownServerUrl();
+  el('loginUrl').value = url;
+  el('loginServerBox').open = !url;
+  const a = (() => { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch (e) { return null; } })();
+  if (a && a.user && !el('loginUser').value) el('loginUser').value = a.user;
+  setTimeout(() => (el('loginUser').value ? el('loginPass') : el('loginUser')).focus(), 50);
+}
+function unlockApp() { document.body.classList.remove('locked'); }
+
+function handleUnauthorized() {
+  clearAuth();
+  lockApp('Sesi login berakhir, atau akun diubah dari perangkat lain. Silakan masuk lagi. (Data di perangkat ini aman.)');
+}
+
+function loginErrorText(code) {
+  if (code === 'invalid') return 'Nama pengguna atau kata sandi salah.';
+  if (code === 'locked') return 'Terlalu banyak percobaan gagal. Coba lagi dalam beberapa menit.';
+  return 'Login gagal: ' + code;
+}
+
+async function submitLogin() {
+  const url = el('loginUrl').value.trim();
+  const username = el('loginUser').value.trim();
+  const password = el('loginPass').value;
+  const errEl = el('loginError');
+  const btn = el('loginBtn');
+  errEl.textContent = '';
+  el('loginLocalBtn').hidden = true;
+  if (!url) { el('loginServerBox').open = true; errEl.textContent = 'Isi alamat server (URL Web App) dulu.'; return; }
+  if (!username || !password) { errEl.textContent = 'Isi nama pengguna dan kata sandi.'; return; }
+  if (navigator.onLine === false) { errEl.textContent = 'Tidak ada koneksi internet. Login butuh koneksi.'; return; }
+  btn.disabled = true; btn.textContent = 'Memeriksa…';
+  try {
+    // Langkah 1 (GET, aman): pastikan skrip server sudah versi yang mendukung login.
+    // Ini penting — skrip lama akan menganggap POST asing sebagai data dan mengosongkan sheet.
+    const sep = url.includes('?') ? '&' : '?';
+    const ping = await fetchWithTimeout(url + sep + 'action=ping&t=' + Date.now(), {}, 25000).then(r => r.json()).catch(() => null);
+    if (!ping) { errEl.textContent = 'Server tidak bisa dihubungi. Periksa URL, koneksi, dan pengaturan akses Web App ("Anyone").'; return; }
+    if (!ping.auth) {
+      errEl.textContent = 'Skrip server belum diperbarui ke versi yang mendukung login. Tempel kode terbaru google-apps-script.gs lalu Deploy versi baru (lihat TUTORIAL).';
+      el('loginLocalBtn').hidden = false;
+      return;
+    }
+    // Langkah 2: login.
+    const res = await fetchWithTimeout(url, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ type: 'login', username, password })
+    }, 30000);
+    const data = await res.json().catch(() => null);
+    if (!data || !data.ok) { errEl.textContent = loginErrorText(data && data.error || 'respons tidak valid'); return; }
+
+    saveAuth({ token: data.token, exp: data.exp, user: data.user, url, defaultCreds: !!data.defaultCreds });
+    try { localStorage.setItem(SERVER_URL_KEY, url); localStorage.removeItem(LEGACY_KEY); } catch (e) {}
+    state.settings.sheetsUrl = url;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    el('loginPass').value = '';
+    unlockApp();
+    renderPengaturan();
+    bootSync();
+    if (data.defaultCreds) {
+      toast('Anda masih memakai akun bawaan. Ganti kata sandi di Pengaturan → Akun admin.');
+    }
+  } catch (err) {
+    console.error('Login gagal', err);
+    errEl.textContent = (err && err.name === 'AbortError') ? 'Waktu habis — koneksi lambat atau server tidak merespons.' : 'Tidak bisa menghubungi server. Periksa URL dan koneksi internet.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Masuk';
+  }
+}
+el('loginBtn').addEventListener('click', submitLogin);
+['loginUser', 'loginPass', 'loginUrl'].forEach(id => el(id).addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); }));
+
+el('loginLocalBtn').addEventListener('click', () => {
+  try { localStorage.setItem(LEGACY_KEY, '1'); } catch (e) {}
+  const url = el('loginUrl').value.trim();
+  if (url) { state.settings.sheetsUrl = url; localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  unlockApp(); renderPengaturan(); bootSync();
+});
+
+/* Keluar: kirim dulu perubahan terakhir, lalu hapus token DAN data di perangkat ini
+   (supaya tidak tertinggal di komputer umum/bersama). Data tetap aman di server. */
+el('logoutBtn').addEventListener('click', async () => {
+  let wipe = true;
+  if (!isLegacyMode() && state.settings.sheetsUrl && hasUnsyncedChanges()) {
+    toast('Mengirim perubahan terakhir ke server…');
+    const ok = await syncToSheets(true);
+    if (!ok) {
+      const lanjut = await confirmDialog('Perubahan terakhir belum berhasil dikirim ke server (mungkin offline). Tetap keluar? Data di perangkat ini TIDAK dihapus supaya tidak hilang, dan akan terkirim saat Anda login lagi.', 'Ya, tetap keluar');
+      if (!lanjut) return;
+      wipe = false;
+    }
+  } else {
+    const ok = await confirmDialog('Keluar dari akun? Data di perangkat ini akan dihapus (data tetap aman di server dan muncul lagi saat Anda login).', 'Ya, keluar');
+    if (!ok) return;
+  }
+  clearAuth();
+  try { localStorage.removeItem(LEGACY_KEY); if (wipe) localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  location.reload();
+});
+
+/* Pengaturan → Akun admin */
+function renderAkunPanel() {
+  const a = loadAuth();
+  const legacy = isLegacyMode();
+  el('acctForm').hidden = legacy || !a;
+  el('acctLegacyNote').hidden = !legacy;
+  el('acctEnableLoginBtn').hidden = !legacy;
+  el('acctDefaultWarn').hidden = !(a && a.defaultCreds);
+  if (a && document.activeElement !== el('acctUser')) el('acctUser').value = a.user || '';
+}
+el('acctEnableLoginBtn').addEventListener('click', () => {
+  localStorage.removeItem(LEGACY_KEY);
+  lockApp('Masuk dengan akun admin (bawaan: admin / admin123).');
+});
+const ACCT_ERR = {
+  'wrong-password': 'Kata sandi saat ini salah.',
+  'bad-username': 'Nama pengguna minimal 3 karakter dan tanpa spasi.',
+  'weak-password': 'Kata sandi baru minimal 6 karakter.'
+};
+el('saveAcctBtn').addEventListener('click', async () => {
+  const res = el('acctResult');
+  const cur = el('acctCurPass').value;
+  const user = el('acctUser').value.trim();
+  const np = el('acctNewPass').value;
+  const np2 = el('acctNewPass2').value;
+  if (!cur) { res.textContent = 'Isi kata sandi saat ini untuk menyimpan perubahan.'; return; }
+  if (user.length < 3 || /\s/.test(user)) { res.textContent = ACCT_ERR['bad-username']; return; }
+  if (np && np.length < 6) { res.textContent = ACCT_ERR['weak-password']; return; }
+  if (np !== np2) { res.textContent = 'Kata sandi baru dan pengulangannya tidak sama.'; return; }
+  res.textContent = 'Menyimpan…';
+  try {
+    const r = await fetchWithTimeout(state.settings.sheetsUrl, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ type: 'changeCredentials', token: authToken(), currentPassword: cur, newUsername: user, newPassword: np })
+    }, 30000);
+    const data = await r.json().catch(() => null);
+    if (data && data.error === 'unauthorized') { handleUnauthorized(); return; }
+    if (!data || !data.ok) { res.textContent = ACCT_ERR[data && data.error] || 'Gagal menyimpan akun. Cek koneksi.'; return; }
+    const old = loadAuth() || {};
+    saveAuth({ token: data.token, exp: data.exp, user: data.user, url: old.url || state.settings.sheetsUrl, defaultCreds: !!data.defaultCreds });
+    ['acctCurPass', 'acctNewPass', 'acctNewPass2'].forEach(id => { el(id).value = ''; });
+    res.textContent = np
+      ? '✓ Akun disimpan. Perangkat lain otomatis keluar dan harus login dengan kata sandi baru.'
+      : '✓ Nama pengguna disimpan.';
+    renderAkunPanel();
+  } catch (err) {
+    res.textContent = 'Gagal menyimpan akun. Cek koneksi internet.';
+  }
+});
+
+/* Sinkron awal setelah login / saat aplikasi dibuka dengan sesi yang masih berlaku.
+   PENTING: perangkat yang BELUM PERNAH sinkron tidak boleh langsung mengirim data
+   lokalnya (kosong) — itu akan menimpa data server. Jadi ambil dulu dari server. */
+async function bootSync() {
+  if (!state.settings.sheetsUrl || !canSync()) return;
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const neverSynced = !state.settings.lastPull && !state.settings.lastSync;
+  if (neverSynced) {
+    if (offline) { toast('Sedang offline. Data server akan diambil saat koneksi tersedia (buka ulang aplikasi).'); return; }
+    let data;
+    try { data = await fetchSnapshot(); }
+    catch (err) {
+      if (err && err.message === 'unauthorized') { handleUnauthorized(); return; }
+      toast('Gagal mengambil data dari server. Coba tombol "Ambil data terbaru".'); return;
+    }
+    const has = d => (d.classes || []).length || (d.students || []).length;
+    const markSynced = (kind) => {
+      state.settings[kind] = new Date().toISOString();
+      state.settings.syncedSnapshot = coreSnapshotStr();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      updateSyncBadge();
+    };
+    if (!has(state)) {                       // perangkat baru & kosong → pakai data server
+      applyCloudSnapshot(data); markSynced('lastPull');
+      toast('Data dari server berhasil dimuat.');
+    } else if (!has(data)) {                 // server kosong, perangkat punya data → kirim
+      await syncToSheets(true);
+    } else {                                 // dua-duanya berisi → tanya
+      const pakaiServer = await confirmDialog('Server sudah berisi data, dan perangkat ini juga punya data yang belum pernah disinkronkan. Pakai data server? "Ya" = data di perangkat ini DIGANTI data server. "Batal" = data perangkat ini dipertahankan dan akan MENIMPA data server.', 'Ya, pakai data server');
+      if (pakaiServer) { applyCloudSnapshot(data); markSynced('lastPull'); toast('Data dari server berhasil dimuat.'); }
+      else { await syncToSheets(true); }
+    }
+    return;
+  }
+  if (hasUnsyncedChanges()) {
+    if (!offline) syncToSheets(true);
+    else toast('Sedang offline. Perubahan yang tersimpan di perangkat ini akan otomatis terkirim begitu koneksi internet tersedia.');
+  } else {
+    pullFromSheets(true);
+  }
+}
+
+function startApp() {
+  if (!state.settings.sheetsUrl && presetServerUrl()) {
+    state.settings.sheetsUrl = presetServerUrl();
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  if (loadAuth() || isLegacyMode()) { unlockApp(); bootSync(); }
+  else lockApp('');
+}
+
+/* =========================================================================
    SINKRON DENGAN GOOGLE SPREADSHEET (dua arah)
    ========================================================================= */
 
@@ -3818,7 +4058,9 @@ function updateSyncBadge() {
 async function syncToSheets(silent) {
   const url = state.settings.sheetsUrl;
   if (!url) { if (!silent) toast('Isi URL Google Apps Script di Pengaturan terlebih dahulu'); return false; }
+  if (!canSync()) { if (!silent) toast('Masuk dengan akun admin dulu.'); return false; }
   const payload = {
+    token: authToken(),
     classes: state.classes,
     students: state.students.map(s => ({ ...s, kelas: classById(s.classId)?.name || '' })),
     attendance: state.attendance.map(a => ({ ...a, kelas: classById(a.classId)?.name || '', siswa: studentById(a.studentId)?.name || '' })),
@@ -3865,6 +4107,7 @@ async function syncToSheets(silent) {
     return true;
   } catch (err) {
     console.error('Sinkron (kirim) gagal', err);
+    if (err && err.message === 'unauthorized') { handleUnauthorized(); return false; }
     updateSyncBadge();
     if (!silent) toast('Gagal mengirim data. Periksa koneksi internet dan URL Apps Script.');
     return false;
@@ -3874,14 +4117,21 @@ async function syncToSheets(silent) {
 /* AMBIL: menarik data terbaru dari Spreadsheet dan menggantikan data di
    perangkat ini dengannya (dipakai supaya perubahan dari perangkat lain
    ikut muncul di sini). */
+async function fetchSnapshot() {
+  const url = state.settings.sheetsUrl;
+  const sep = url.includes('?') ? '&' : '?';
+  const res = await fetch(url + sep + 'action=pull&token=' + encodeURIComponent(authToken()) + '&t=' + Date.now());
+  const data = await res.json();
+  if (!data || !data.ok) throw new Error((data && data.error) || 'Respons tidak valid');
+  return data;
+}
+
 async function pullFromSheets(silent) {
   const url = state.settings.sheetsUrl;
   if (!url) { if (!silent) toast('Isi URL Google Apps Script di Pengaturan terlebih dahulu'); return false; }
+  if (!canSync()) { if (!silent) toast('Masuk dengan akun admin dulu.'); return false; }
   try {
-    const sep = url.includes('?') ? '&' : '?';
-    const res = await fetch(url + sep + 'action=pull&t=' + Date.now());
-    const data = await res.json();
-    if (!data || !data.ok) throw new Error((data && data.error) || 'Respons tidak valid');
+    const data = await fetchSnapshot();
     applyCloudSnapshot(data);
     state.settings.lastPull = new Date().toISOString();
     state.settings.syncedSnapshot = coreSnapshotStr();
@@ -3891,6 +4141,7 @@ async function pullFromSheets(silent) {
     return true;
   } catch (err) {
     console.error('Sinkron (ambil) gagal', err);
+    if (err && err.message === 'unauthorized') { handleUnauthorized(); return false; }
     if (!silent) toast('Gagal mengambil data. Pastikan URL benar & skrip sudah versi terbaru (lihat TUTORIAL.md).');
     return false;
   }
@@ -3964,19 +4215,5 @@ refreshKelasOptions();
 refreshNilaiJenisOptions();
 renderAll();
 
-/* Saat aplikasi dibuka: kalau sudah terhubung ke Spreadsheet —
-   - Kalau ada perubahan lokal yang belum terkirim (mis. sempat diisi saat
-     offline), otomatis kirim dulu (tanpa perlu klik apa pun).
-   - Kalau tidak ada perubahan tertunda, otomatis ambil data terbaru dari
-     Spreadsheet supaya selalu memakai data terbaru dari perangkat lain. */
-if (state.settings.sheetsUrl) {
-  if (hasUnsyncedChanges()) {
-    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-      syncToSheets(true);
-    } else {
-      toast('Sedang offline. Perubahan yang tersimpan di perangkat ini akan otomatis terkirim begitu koneksi internet tersedia.');
-    }
-  } else {
-    pullFromSheets(true);
-  }
-}
+/* Saat aplikasi dibuka (atau setelah login): lihat bootSync() di bagian AKUN ADMIN. */
+startApp();
