@@ -3828,6 +3828,9 @@ function lockApp(message) {
   el('loginPass').value = '';
   const url = knownServerUrl();
   el('loginUrl').value = url;
+  // Kalau URL sudah diisi di config.js, bagian "Alamat server" disembunyikan total
+  // supaya tidak bisa diubah/dihapus dari layar login.
+  el('loginServerBox').hidden = !!presetServerUrl();
   el('loginServerBox').open = !url;
   const a = (() => { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch (e) { return null; } })();
   if (a && a.user && !el('loginUser').value) el('loginUser').value = a.user;
@@ -3847,7 +3850,7 @@ function loginErrorText(code) {
 }
 
 async function submitLogin() {
-  const url = el('loginUrl').value.trim();
+  const url = presetServerUrl() || el('loginUrl').value.trim();
   const username = el('loginUser').value.trim();
   const password = el('loginPass').value;
   const errEl = el('loginError');
@@ -3900,7 +3903,7 @@ el('loginBtn').addEventListener('click', submitLogin);
 
 el('loginLocalBtn').addEventListener('click', () => {
   try { localStorage.setItem(LEGACY_KEY, '1'); } catch (e) {}
-  const url = el('loginUrl').value.trim();
+  const url = presetServerUrl() || el('loginUrl').value.trim();
   if (url) { state.settings.sheetsUrl = url; localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   unlockApp(); renderPengaturan(); bootSync();
 });
