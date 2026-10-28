@@ -585,3 +585,5 @@ body.locked .login-overlay{display:flex;}
 .side-logout:hover{background:rgba(255,255,255,.12);}
 #acctPanel input[type=password]{padding:9px 11px; border:1px solid var(--line); border-radius:var(--radius-sm); font:inherit; font-size:14px; background:#fff; color:var(--ink); min-width:200px;}
 #acctPanel input[type=password]:focus{outline:none; border-color:var(--purple); box-shadow:0 0 0 3px rgba(157,0,255,.18);}
+
+.login-server[hidden]{display:none !important;}
