@@ -11,14 +11,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Absensi IPA">
-<meta name="description" content="Aplikasi absensi & nilai IPA untuk guru: kelola kelas, siswa, absensi, dan nilai dengan mudah.">
-
-<!-- PWA: manifest & ikon -->
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -32,7 +24,25 @@
   })();
 </script>
 </head>
-<body>
+<body class="locked">
+
+  <!-- LAYAR LOGIN -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card">
+      <div class="login-brand"><span class="side-brand-mark">✤</span><strong>Buku Kelas</strong></div>
+      <h1 class="login-title">Masuk</h1>
+      <p class="hint login-sub" id="loginSub">Masuk dengan akun admin dari perangkat mana saja. Data tetap tersambung ke server Anda.</p>
+      <label class="ctx-field"><span>Nama pengguna</span><input type="text" id="loginUser" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+      <label class="ctx-field"><span>Kata sandi</span><input type="password" id="loginPass" autocomplete="current-password"></label>
+      <details class="login-server" id="loginServerBox">
+        <summary>Alamat server</summary>
+        <label class="ctx-field"><span>URL Web App (berakhiran /exec)</span><input type="text" id="loginUrl" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false"></label>
+      </details>
+      <p class="login-error" id="loginError" role="alert"></p>
+      <button class="btn btn-primary login-btn" id="loginBtn">Masuk</button>
+      <button class="login-local" id="loginLocalBtn" type="button" hidden>Lanjut tanpa login (mode lama, tanpa perlindungan akun)</button>
+    </div>
+  </div>
 
   <!-- TOPBAR MOBILE (hanya tampil di layar kecil) -->
   <header class="mobile-topbar">
@@ -108,6 +118,8 @@
       </span>
       <span id="sideGuruNama" class="side-guru-nama">Guru IPA</span>
     </div>
+
+    <button class="side-logout" id="logoutBtn" type="button">⎋ Keluar</button>
 
     <div class="side-sync">
       <div class="sync-dot" id="syncDot"></div>
@@ -678,6 +690,28 @@
         <p class="hint" id="sheetsTestResult"></p>
       </div>
 
+      <div class="panel" id="acctPanel">
+        <div class="panel-head"><h2>Akun admin (login)</h2></div>
+        <p class="hint">Dipakai untuk masuk dari perangkat mana pun tanpa perlu login akun Google. Nama pengguna dan kata sandi disimpan di server Anda (kata sandi hanya berupa hash). Mengganti kata sandi akan <strong>mengeluarkan semua perangkat lain</strong>.</p>
+        <p class="hint" id="acctDefaultWarn" style="color:var(--red);font-weight:600" hidden>⚠ Anda masih memakai akun bawaan (admin / admin123). Segera ganti kata sandinya di bawah.</p>
+        <p class="hint" id="acctLegacyNote" hidden>Saat ini berjalan tanpa login (mode lama). Perbarui skrip server (lihat TUTORIAL), lalu klik tombol di bawah untuk mulai memakai login.</p>
+        <div id="acctForm">
+          <div class="form-row">
+            <label class="ctx-field"><span>Nama pengguna</span><input type="text" id="acctUser" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+            <label class="ctx-field"><span>Kata sandi saat ini (wajib)</span><input type="password" id="acctCurPass" autocomplete="current-password"></label>
+          </div>
+          <div class="form-row">
+            <label class="ctx-field"><span>Kata sandi baru (kosongkan jika tidak diganti)</span><input type="password" id="acctNewPass" autocomplete="new-password"></label>
+            <label class="ctx-field"><span>Ulangi kata sandi baru</span><input type="password" id="acctNewPass2" autocomplete="new-password"></label>
+          </div>
+          <div class="form-row">
+            <button class="btn btn-primary" id="saveAcctBtn">Simpan akun</button>
+          </div>
+        </div>
+        <button class="btn btn-line" id="acctEnableLoginBtn" hidden>Aktifkan login admin</button>
+        <p class="hint" id="acctResult"></p>
+      </div>
+
       <div class="panel">
         <div class="panel-head"><h2>Data lokal</h2></div>
         <p class="hint">Semua data tersimpan di peramban perangkat ini (localStorage). Unduh cadangan JSON secara berkala, terutama sebelum berganti perangkat.</p>
@@ -723,16 +757,7 @@
      atau memproses foto HEIC secara langsung. Lihat penggunaannya di app.js (fungsi
      `toUploadableImage`). -->
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="config.js"></script>
 <script src="app.js"></script>
-<script>
-  // Daftarkan Service Worker supaya aplikasi bisa dipasang (PWA) & bekerja offline.
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('service-worker.js').catch(function (err) {
-        console.warn('Gagal mendaftarkan service worker:', err);
-      });
-    });
-  }
-</script>
 </body>
 </html>
