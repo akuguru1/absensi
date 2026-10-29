@@ -3748,7 +3748,23 @@ document.getElementById('saveSheetsBtn').addEventListener('click', async () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   const result = document.getElementById('sheetsTestResult');
   if (!url) { result.textContent = 'URL dikosongkan — sinkronisasi otomatis dimatikan.'; updateSyncBadge(); return; }
+  if (!canSync()) { result.textContent = '✗ Anda belum login. Muat ulang halaman lalu masuk dengan akun admin.'; return; }
   result.textContent = 'Menguji koneksi (mengambil data dari Spreadsheet)…';
+  try {
+    const snap = await fetchSnapshot();
+    if (!hasCoreData(snap) && hasCoreData(state)) {
+      updateSyncBadge();
+      result.textContent = '✓ Terhubung ke server, tetapi Spreadsheet masih kosong. Data di perangkat ini DIPERTAHANKAN (tidak dihapus). Klik "⬆ Kirim ke Spreadsheet" untuk mengunggahnya.';
+      return;
+    }
+  } catch (err) {
+    if (err && err.message === 'unauthorized') { handleUnauthorized(); return; }
+    result.textContent = '✗ Gagal terhubung (' + ((err && err.message) || 'tidak diketahui') + '). ' +
+      (/Failed to fetch|NetworkError|Load failed/i.test((err && err.message) || '')
+        ? 'Server tidak terjangkau: cek URL berakhiran /exec, akses Web App "Anyone", dan koneksi internet.'
+        : 'Respons server tidak dikenali: pastikan skrip terbaru sudah di-deploy sebagai VERSI BARU.');
+    return;
+  }
   const ok = await pullFromSheets(true);
   if (ok) {
     result.textContent = '✓ Terhubung. Data dari Spreadsheet berhasil dimuat ke perangkat ini. Mulai sekarang, setiap perubahan (nilai, absensi, dll.) otomatis tersimpan & terkirim ke Spreadsheet ini — tidak perlu klik apa pun lagi.';
@@ -4120,6 +4136,8 @@ async function syncToSheets(silent) {
 /* AMBIL: menarik data terbaru dari Spreadsheet dan menggantikan data di
    perangkat ini dengannya (dipakai supaya perubahan dari perangkat lain
    ikut muncul di sini). */
+function hasCoreData(d) { return !!((d.classes || []).length || (d.students || []).length); }
+
 async function fetchSnapshot() {
   const url = state.settings.sheetsUrl;
   const sep = url.includes('?') ? '&' : '?';
@@ -4135,6 +4153,12 @@ async function pullFromSheets(silent) {
   if (!canSync()) { if (!silent) toast('Masuk dengan akun admin dulu.'); return false; }
   try {
     const data = await fetchSnapshot();
+    // PENGAMAN: Spreadsheet kosong tidak boleh menghapus data yang ada di perangkat ini.
+    if (!hasCoreData(data) && hasCoreData(state)) {
+      if (!silent) toast('Spreadsheet masih kosong, jadi data di perangkat ini DIPERTAHANKAN. Klik "Kirim ke Spreadsheet" untuk mengunggahnya.');
+      updateSyncBadge();
+      return false;
+    }
     applyCloudSnapshot(data);
     state.settings.lastPull = new Date().toISOString();
     state.settings.syncedSnapshot = coreSnapshotStr();
